@@ -6,18 +6,41 @@ from typing import Tuple
 async def correct_text_with_hf(text: str, token: str) -> Tuple[str, bool]:
     """
     Sends the extracted text to a Hugging Face model to correct syntax and spelling errors.
+    Splits the text into chunks to bypass token limits, then stitches them back together.
     Returns a tuple (corrected_text, is_truncated).
     """
     try:
         # Using a reliable instruction-following lightweight model
         client = InferenceClient(token=token)
         
-        # Truncating raw text to fit in prompt token limit (approx 3000 chars for safety)
-        # Production ready apps would chunk this into parts.
-        is_truncated = len(text) > 3500
-        safe_text = text[:3500] if is_truncated else text
+        # Chunking the text by lines to respect the ~3000 chars limit per chunk
+        max_chunk_size = 3000
+        lines = text.split('\n')
+        chunks = []
+        current_chunk = ""
         
-        prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+        for line in lines:
+            if len(current_chunk) + len(line) + 1 > max_chunk_size:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                    current_chunk = line + "\n"
+                else:
+                    # A single line is longer than max_chunk_size
+                    chunks.append(line[:max_chunk_size])
+                    current_chunk = line[max_chunk_size:] + "\n"
+            else:
+                current_chunk += line + "\n"
+                
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+
+        corrected_chunks = []
+        
+        for i, chunk in enumerate(chunks):
+            if not chunk.strip():
+                continue
+                
+            prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 Tu es un assistant expert spécialisé dans le nettoyage de textes extraits par OCR (reconnaissance optique de caractères).
 Ta mission est de corriger les fautes d'orthographe et les erreurs de grammaire causées par l'OCR.
 DE PLUS, tu dois IMPÉRATIVEMENT nettoyer le texte en supprimant :
@@ -28,12 +51,30 @@ DE PLUS, tu dois IMPÉRATIVEMENT nettoyer le texte en supprimant :
 Conserve l'intégralité du texte principal sans en modifier le sens.
 Renvoie UNIQUEMENT le texte final nettoyé et corrigé. Ne fais aucune phrase d'introduction ni de conclusion.
 <|eot_id|><|start_header_id|>user<|end_header_id|>
-Texte à nettoyer :
-{safe_text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
-        messages = [{"role": "user", "content": prompt}]
-        # Using a reliable instruction-following model updated for better formatting (Llama-3.1)
-        response = client.chat_completion(model="meta-llama/Llama-3.1-8B-Instruct", messages=messages, max_tokens=1500, temperature=0.1)
-        return response.choices[0].message.content.strip(), is_truncated
+Texte à nettoyer (partie {i+1}/{len(chunks)}) :
+{chunk}<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+            messages = [{"role": "user", "content": prompt}]
+            
+            try:
+                # Synchronous call; in an async heavy-load server, this might block. 
+                # For an internal/admin script, it is fine to run sequentially.
+                response = client.chat_completion(
+                    model="meta-llama/Llama-3.1-8B-Instruct", 
+                    messages=messages, 
+                    max_tokens=1500, 
+                    temperature=0.1
+                )
+                corrected_chunks.append(response.choices[0].message.content.strip())
+            except Exception as e:
+                logger.error(f"Failed to correct chunk {i+1}: {e}")
+                # Fallback: keep the original chunk if correction fails to avoid losing data
+                corrected_chunks.append(chunk)
+                
+        # Join all corrected chunks
+        final_text = "\n\n".join(corrected_chunks)
+        
+        # is_truncated is now always False since we process everything in chunks
+        return final_text, False
     except Exception as e:
         logger.error(f"Failed to use Hugging Face for correction: {e}")
         raise e

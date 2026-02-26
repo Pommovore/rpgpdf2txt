@@ -29,13 +29,20 @@ Dossiers d'exploitation (générés à l'exécution) :
 
 Le système prévoit deux environnements de déploiements. Le processus d'installation global est géré via le binaire `uv` pour les dépendances.
 
-### 1. Prérequis Serveur (Linux Ubuntu/WSL)
+### 1. Prérequis Serveur (Linux)
 Avant toute chose, vous devrez posséder :
 - **Python 3.10+** (et `curl` ou `wget` pour instancier `uv`).
 - Les librairies systèmes pour le traitement PDF :
+
+**Pour Debian / Ubuntu / WSL :**
 ```bash
 sudo apt-get update
 sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-fra
+```
+
+**Pour Fedora / RHEL / CentOS :**
+```bash
+sudo dnf install -y poppler-utils tesseract tesseract-langpack-fra
 ```
 
 ### 2. Variables d'Environnement
