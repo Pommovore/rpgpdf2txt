@@ -1,0 +1,38 @@
+2026-02-26 11:01:47.603 | INFO     | app.main:startup_event:49 - Starting up API...
+2026-02-26 11:01:47.604 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data
+2026-02-26 11:01:47.604 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/users
+2026-02-26 11:01:47.605 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/temp
+2026-02-26 11:01:47.605 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/logs
+2026-02-26 11:01:47.605 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/db
+2026-02-26 11:01:57.644 | INFO     | app.main:startup_event:49 - Starting up API...
+2026-02-26 11:01:57.645 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data
+2026-02-26 11:01:57.645 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/users
+2026-02-26 11:01:57.645 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/temp
+2026-02-26 11:01:57.645 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/logs
+2026-02-26 11:01:57.645 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/db
+2026-02-26 11:23:06.684 | INFO     | app.main:startup_event:49 - Starting up API...
+2026-02-26 11:23:06.684 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data
+2026-02-26 11:23:06.684 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/users
+2026-02-26 11:23:06.684 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/temp
+2026-02-26 11:23:06.684 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/logs
+2026-02-26 11:23:06.684 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/db
+2026-02-26 11:23:34.098 | INFO     | app.services.pdf_extractor:extract_text_from_pdf:25 - Successfully extracted text using PyMuPDF.
+2026-02-26 11:23:34.636 | INFO     | app.services.webhook:send_client_webhook:39 - Client webhook sent successfully to https://discord.com/api/webhooks/1476492522195910657/0DjecYC8qIfnmZoiV1HxWU7rFBfwMzoNJA7C_eoVeyt7ZETdxRe5IoAU_dIY6fOq6W12
+2026-02-26 11:23:34.638 | INFO     | app.services.extractor_job:process_extraction:99 - Cleaned up temporary file: /home/jack/dev/rpgpdf2text/data/temp/b5d71eec-4a70-4388-a7df-65f824d861d2_Thomas Farmer - capitaine (Jack).pdf
+2026-02-26 11:48:57.909 | INFO     | app.services.pdf_extractor:extract_text_from_pdf:25 - Successfully extracted text using PyMuPDF.
+2026-02-26 11:48:58.409 | INFO     | app.services.webhook:send_client_webhook:39 - Client webhook sent successfully to https://discord.com/api/webhooks/1476492522195910657/0DjecYC8qIfnmZoiV1HxWU7rFBfwMzoNJA7C_eoVeyt7ZETdxRe5IoAU_dIY6fOq6W12
+2026-02-26 11:48:58.410 | INFO     | app.services.extractor_job:process_extraction:99 - Cleaned up temporary file: /home/jack/dev/rpgpdf2text/data/temp/4f471e29-b087-473b-a7c6-2fe825fbd6cb_Emilia Brandt - commandante (Jack).pdf
+2026-02-26 11:56:31.151 | INFO     | app.services.pdf_extractor:extract_text_from_pdf:28 - Extracted text is too short, assuming scanned document. Falling back to OCR.
+2026-02-26 11:56:44.859 | INFO     | app.services.pdf_extractor:extract_text_from_pdf:47 - Successfully extracted text using OCR.
+2026-02-26 11:56:45.310 | INFO     | app.services.webhook:send_client_webhook:39 - Client webhook sent successfully to https://discord.com/api/webhooks/1476492522195910657/0DjecYC8qIfnmZoiV1HxWU7rFBfwMzoNJA7C_eoVeyt7ZETdxRe5IoAU_dIY6fOq6W12
+2026-02-26 11:56:45.313 | INFO     | app.services.extractor_job:process_extraction:99 - Cleaned up temporary file: /home/jack/dev/rpgpdf2text/data/temp/6cdd90bc-b9e7-449a-8179-bab361820ab8_Cpt Karl Schafer.pdf
+2026-02-26 11:57:37.442 | INFO     | app.services.pdf_extractor:extract_text_from_pdf:28 - Extracted text is too short, assuming scanned document. Falling back to OCR.
+2026-02-26 11:57:50.781 | INFO     | app.services.pdf_extractor:extract_text_from_pdf:47 - Successfully extracted text using OCR.
+2026-02-26 11:57:51.321 | INFO     | app.services.webhook:send_client_webhook:39 - Client webhook sent successfully to https://discord.com/api/webhooks/1476492522195910657/0DjecYC8qIfnmZoiV1HxWU7rFBfwMzoNJA7C_eoVeyt7ZETdxRe5IoAU_dIY6fOq6W12
+2026-02-26 11:57:51.324 | INFO     | app.services.extractor_job:process_extraction:99 - Cleaned up temporary file: /home/jack/dev/rpgpdf2text/data/temp/82d191b9-ea61-4457-a294-6dab16c36f89_Cpt Karl Schafer.pdf
+2026-02-26 12:01:24.044 | INFO     | app.main:startup_event:49 - Starting up API...
+2026-02-26 12:01:24.044 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data
+2026-02-26 12:01:24.045 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/users
+2026-02-26 12:01:24.045 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/temp
+2026-02-26 12:01:24.045 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/logs
+2026-02-26 12:01:24.045 | INFO     | app.main:create_directories:27 - Ensured directory exists: ./data/db

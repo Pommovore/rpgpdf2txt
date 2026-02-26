@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+python-jose[cryptography]
+bcrypt
+python-multipart
+jinja2
+loguru
+httpx
+PyMuPDF
+pdf2image
+pytesseract
+huggingface_hub
+Pillow

@@ -1,0 +1,44 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: 'pip'
+        
+    - name: Install system dependencies (OCR & PDF tools)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-fra
+        
+    - name: Ensure uv is installed
+      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    - name: Install Python dependencies with uv
+      run: |
+        $HOME/.cargo/bin/uv pip install --system -r requirements.txt
+        $HOME/.cargo/bin/uv pip install --system pytest httpx
+        
+    - name: Check Application Imports
+      env:
+        SECRET_KEY: ci_test_secret_key_12345
+        DATABASE_URL: sqlite:///./ci_test.db
+      run: |
+        python -c "from app.main import app; print('App successfully imported')"
+        
+    # Later we can add Pytest commands here. 
+    # - name: Run tests
+    #   run: pytest tests/

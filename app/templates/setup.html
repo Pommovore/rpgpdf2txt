@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow-lg bg-dark text-light border-secondary">
+            <div class="card-body p-5">
+                <div class="text-center mb-4">
+                    <h2 class="fw-bold">Bienvenue Créateur 👑</h2>
+                    <p class="text-muted">Configuration initiale de RPGPDF2Text</p>
+                </div>
+
+                <form action="/setup" method="POST">
+                    <div class="mb-3">
+                        <label for="creator_email" class="form-label">Adresse email du Créateur</label>
+                        <input type="email" class="form-control bg-dark text-light border-secondary" id="creator_email"
+                            name="creator_email" required placeholder="mon_email@domaine.com">
+                        <div class="form-text text-muted">Cet email sera utilisé pour vous connecter en tant
+                            qu'administrateur.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="hf_token" class="form-label">Token Hugging Face</label>
+                        <input type="password" class="form-control bg-dark text-light border-secondary" id="hf_token"
+                            name="hf_token" required placeholder="hf_...">
+                        <div class="form-text text-muted">Token requis pour utiliser l'API Inference pour la correction.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="discord_webhook" class="form-label">URL Webhook Discord</label>
+                        <input type="url" class="form-control bg-dark text-light border-secondary" id="discord_webhook"
+                            name="discord_webhook" required placeholder="https://discord.com/api/webhooks/...">
+                        <div class="form-text text-muted">To receive alerts for new user registrations.</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="admin_password" class="form-label">Admin Password</label>
+                        <input type="password" class="form-control bg-dark text-light border-secondary"
+                            id="admin_password" name="admin_password" required placeholder="Choose a secure password">
+                        <div class="form-text text-muted">Password for the default 'admin@local' account.</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 py-2">Initialize System</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
