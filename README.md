@@ -92,6 +92,14 @@ rpgpdf2txt/
 └── run_local.sh        # Script de lancement local
 ```
 
+
 ## Licence
 
-Projet privé.
+Ce projet est sous licence **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+Cela signifie que :
+- ✅ **Vous pouvez** utiliser, modifier et distribuer ce logiciel.
+- 🔗 **Effet copyleft** : Si vous modifiez ce code et le distribuez (ou l'hébergez sur un serveur pour que d'autres l'utilisent), vous **devez** publier vos modifications sous la même licence AGPL.
+- 🔓 **Accès au code** : Les utilisateurs de votre version doivent pouvoir télécharger votre code source.
+
+Voir **[Licence](doc/LICENSE.md)** pour le texte complet.
