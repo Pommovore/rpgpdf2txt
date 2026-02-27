@@ -17,33 +17,44 @@ async def process_extraction(request_id: int):
     try:
         req = db.query(ExtractionRequest).filter(ExtractionRequest.id == request_id).first()
         if not req:
+            logger.warning(f"Demande d'extraction {request_id} non trouvée en base.")
             return
             
+        logger.info(f"Début du traitement de la demande {request_id} (ID Texte: {req.id_texte})")
         req.status = "processing"
         db.commit()
         
-        # 1. Extract text
+        # 1. Extraction du texte
+        logger.info(f"Étape 1/4 : Extraction du texte depuis le PDF '{req.file_path}'")
         raw_text = extract_text_from_pdf(req.file_path)
+        logger.info(f"Extraction terminée. Longueur brute : {len(raw_text)} caractères.")
         
-        # 2. Correct text
+        # 2. Correction IA (si demandée)
         config = db.query(SystemConfig).first()
         hf_token = config.hf_token if config else None
         
         corrected_text = raw_text
         is_truncated = False
         
-        if req.ia_validate and hf_token and raw_text.strip():
-            try:
-                corrected_text, is_truncated = await correct_text_with_hf(raw_text, hf_token)
-            except Exception as e:
-                logger.error(f"HF Correction failed, using raw: {e}")
+        if req.ia_validate:
+            if hf_token and raw_text.strip():
+                logger.info("Étape 2/4 : Correction IA demandée. Envoi à HuggingFace...")
+                try:
+                    corrected_text, is_truncated = await correct_text_with_hf(raw_text, hf_token)
+                    logger.info(f"Correction IA terminée. Longueur finale : {len(corrected_text)} caractères.")
+                except Exception as e:
+                    logger.error(f"Échec de la correction IA, utilisation du texte brut : {e}")
+            else:
+                logger.warning("Correction IA demandée mais impossible (Token HF manquant ou texte vide).")
                 
-        # 3. Save text
+        # 3. Sauvegarde du résultat
+        logger.info("Étape 3/4 : Sauvegarde du fichier texte résultat...")
         user = db.query(User).filter(User.id == req.user_id).first()
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         
         txt_filename = f"{timestamp}_{req.id_texte}.txt"
         if is_truncated:
+            logger.warning("Le texte a été tronqué pour l'IA.")
             txt_filename = f"{timestamp}_{req.id_texte}_IA_truncated.txt"
             
         txt_path = os.path.join(settings.USERS_DIR, user.directory_name, txt_filename)
@@ -55,8 +66,10 @@ async def process_extraction(request_id: int):
         req.status = "success"
         req.completed_at = datetime.utcnow()
         db.commit()
+        logger.info(f"Fichier sauvegardé avec succès dans: {txt_path}")
         
-        # 4. Webhook
+        # 4. Envoi du Webhook
+        logger.info(f"Étape 4/4 : Envoi de la notification au webhook : {req.webhook_url}")
         excerpt = corrected_text[:500]
         if len(corrected_text) > 500:
             excerpt += "..."

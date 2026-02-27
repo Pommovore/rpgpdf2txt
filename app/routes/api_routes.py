@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Form, Query, Request
+from sqlalchemy.orm import Session, joinedload
 from app.db.database import get_db
-from app.db.models import User, ActivityLog
+from app.db.models import User, ActivityLog, ExtractionRequest
 from app.routes.deps import get_current_admin_user, get_current_active_user
 from app.core.config import settings
+from app.services.extractor_job import process_extraction
+from jose import jwt, JWTError
 import os
 import re
+import shutil
+import uuid
+from loguru import logger
 
 router = APIRouter()
 
@@ -59,39 +64,63 @@ def extract_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    if not pdf_file.filename.endswith('.pdf'):
+    """
+    Démarre une nouvelle demande d'extraction de texte.
+    """
+    logger.info(f"Requête d'extraction reçue | Utilisateur: {current_user.email} | ID Texte: {id_texte}")
+    
+    if not pdf_file.filename.lower().endswith('.pdf'):
+        logger.warning(f"Fichier rejeté (non-PDF): {pdf_file.filename}")
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
         
-    # Save the file temporarily
+    # Sauvegarde temporaire du fichier
     temp_filename = f"{uuid.uuid4()}_{pdf_file.filename}"
     file_path = os.path.abspath(os.path.join(settings.TEMP_DIR, temp_filename))
     
+    logger.debug(f"Sauvegarde du PDF temporaire dans: {file_path}")
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(pdf_file.file, buffer)
         
-    # Create job in DB
-    req = ExtractionRequest(
-        id_texte=id_texte,
-        user_id=current_user.id,
-        status="pending",
-        webhook_url=webhook_url,
-        file_path=file_path,
-        ia_validate=ia_validate
-    )
-    db.add(req)
+    # Find existing job or create new one
+    req = db.query(ExtractionRequest).filter(ExtractionRequest.id_texte == id_texte).first()
     
-    log = ActivityLog(user_id=current_user.id, action=f"Demande d'extraction initiée pour '{id_texte}'")
+    if req:
+        # Overwrite existing request
+        req.user_id = current_user.id
+        req.status = "pending"
+        req.webhook_url = webhook_url
+        req.file_path = file_path
+        req.ia_validate = ia_validate
+        req.error_message = None
+        req.completed_at = None
+        action_msg = f"Demande d'extraction relancée/écrasée pour '{id_texte}'"
+    else:
+        # Create new request
+        req = ExtractionRequest(
+            id_texte=id_texte,
+            user_id=current_user.id,
+            status="pending",
+            webhook_url=webhook_url,
+            file_path=file_path,
+            ia_validate=ia_validate
+        )
+        db.add(req)
+        action_msg = f"Nouvelle demande d'extraction initiée pour '{id_texte}'"
+    
+    log = ActivityLog(user_id=current_user.id, action=action_msg)
     db.add(log)
     
     db.commit()
     db.refresh(req)
     
-    # Background processing
+    # Lancement du traitement en arrière-plan
+    logger.info(f"Demande {req.id} ({id_texte}) ajoutée à la file d'attente.")
     background_tasks.add_task(process_extraction, req.id)
     
+    return {"msg": "Extraction started", "request_id": req.id}
+
 from fastapi.responses import FileResponse
-from fastapi import Query, Request
-from jose import jwt, JWTError
+# Les imports FastAPI et jose ont été déplacés en haut du fichier
 
 @router.get("/extract/{request_id}/download")
 def download_text(
@@ -133,11 +162,12 @@ def download_text(
         
     return FileResponse(path=req.txt_file_path, filename=os.path.basename(req.txt_file_path), media_type="text/plain")
 
-from sqlalchemy.orm import joinedload
-from app.db.models import ExtractionRequest, User, ActivityLog
-
 @router.get("/user/requests")
 def get_user_requests(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    """
+    Récupère la liste des demandes de l'utilisateur.
+    """
+    logger.debug(f"Récupération de l'historique pour {current_user.email}")
     requests = db.query(ExtractionRequest).options(joinedload(ExtractionRequest.user)).filter(ExtractionRequest.user_id == current_user.id).order_by(ExtractionRequest.created_at.desc()).all()
     result = []
     for r in requests:

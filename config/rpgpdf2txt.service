@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────
+# Service systemd — RPGPDF2Text
+# ─────────────────────────────────────────────────────────────
+# À placer dans : /etc/systemd/system/rpgpdf2txt.service
+#
+# Installation :
+#   sudo cp config/rpgpdf2txt.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable rpgpdf2txt
+#   sudo systemctl start rpgpdf2txt
+#
+# Vérification :
+#   sudo systemctl status rpgpdf2txt
+#   sudo journalctl -u rpgpdf2txt -f
+# ─────────────────────────────────────────────────────────────
+
+[Unit]
+Description=RPGPDF2Text — Service d'extraction de texte de PDF pour JDR
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# L'utilisateur doit être celui qui a déployé l'application (pour avoir les droits sur .venv)
+# Remplacez "jack" par votre nom d'utilisateur (celui de REMOTE_LOGIN)
+User=jack
+Group=jack
+WorkingDirectory=/opt/rpgpdf2txt
+EnvironmentFile=/opt/rpgpdf2txt/.env
+
+# Commande de démarrage via uvicorn (utilisation de l'environnement virtuel)
+# Le préfixe est géré par le montage des routes dans app/main.py (pas besoin de --root-path)
+ExecStart=/opt/rpgpdf2txt/.venv/bin/python -m uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8885 \
+    --workers 2
+
+# Redémarrage automatique en cas de crash
+Restart=always
+RestartSec=5
+
+# Sécurité : limiter les capacités du processus
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths=/opt/rpgpdf2txt/data
+
+# Limites de ressources raisonnables
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+# Variables d'environnement supplémentaires
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

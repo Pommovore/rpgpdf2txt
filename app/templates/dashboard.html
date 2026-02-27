@@ -29,9 +29,11 @@
                     </div>
 
                     <div class="mb-4 form-check form-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" id="ia_validate" name="ia_validate" value="true">
-                        <label class="form-check-label text-light" for="ia_validate" title="Si coché, l'IA tentera de corriger le texte (limité aux 3500 premiers caractères).">
-                            Correction IA (tronqué à 3500 caractères)
+                        <input class="form-check-input" type="checkbox" role="switch" id="ia_validate"
+                            name="ia_validate" value="true">
+                        <label class="form-check-label text-light" for="ia_validate"
+                            title="Si coché, l'IA tentera de nettoyer et corriger le texte extrait.">
+                            Correction IA
                         </label>
                     </div>
 
@@ -77,5 +79,5 @@
     </div>
 </div>
 
-<script src="/static/js/dashboard.js"></script>
+<script src="{{ app_prefix }}/static/js/dashboard.js"></script>
 {% endblock %}

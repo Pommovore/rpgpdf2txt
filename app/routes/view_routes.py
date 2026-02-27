@@ -12,28 +12,31 @@ import os
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
+# Préfixe pour les templates (liens href, src, etc.)
+_prefix = settings.APP_PREFIX
+
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db: Session = Depends(get_db)):
     config = db.query(SystemConfig).first()
     if not config or not config.is_configured:
-        return templates.TemplateResponse("setup.html", {"request": request})
-    return RedirectResponse(url="/login", status_code=302)
+        return templates.TemplateResponse("setup.html", {"request": request, "app_prefix": _prefix})
+    return RedirectResponse(url=f"{_prefix}/login", status_code=302)
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse("login.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
-    return templates.TemplateResponse("admin.html", {"request": request})
+    return templates.TemplateResponse("admin.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse("dashboard.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
+    return templates.TemplateResponse("register.html", {"request": request, "app_prefix": _prefix})
 
 @router.post("/register")
 async def register_user(
@@ -43,8 +46,7 @@ async def register_user(
     db: Session = Depends(get_db)
 ):
     if db.query(User).filter(User.email == email).first():
-         # In a real app we'd redirect with an error message in URL/flash
-         return templates.TemplateResponse("register.html", {"request": request, "error": "Email already registered"})
+         return templates.TemplateResponse("register.html", {"request": request, "app_prefix": _prefix, "error": "Email already registered"})
          
     user = User(
         email=email,
@@ -60,7 +62,7 @@ async def register_user(
         msg = f"🔔 Nouveau compte en attente de validation: {email}\nLien: {request.base_url}admin/users"
         await send_discord_notification(config.discord_webhook, msg)
         
-    return templates.TemplateResponse("login.html", {"request": request, "success": "Registration successful. Please wait for an admin to validate your account before logging in."})
+    return templates.TemplateResponse("login.html", {"request": request, "app_prefix": _prefix, "success": "Registration successful. Please wait for an admin to validate your account before logging in."})
 
 @router.post("/setup")
 async def setup_creator(
@@ -86,7 +88,7 @@ async def setup_creator(
     admin_user = db.query(User).filter(User.email == creator_email).first()
     if not admin_user:
         
-        # Create directory name: moi@ici.fr -> moi_at_ici_fr
+        # Créer le nom de répertoire : moi@ici.fr -> moi_at_ici_fr
         dir_name = creator_email.replace('@', '_at_').replace('.', '_')
         import re
         dir_name = re.sub(r'[^a-zA-Z0-9_]', '', dir_name)
@@ -107,4 +109,5 @@ async def setup_creator(
     os.makedirs(user_dir_path, exist_ok=True)
     
     await send_discord_notification(discord_webhook, f"✅ RPGPDF2Text is successfully configured and running! Creator email: {creator_email}")
-    return RedirectResponse(url="/login", status_code=302)
+    return RedirectResponse(url=f"{_prefix}/login", status_code=302)
+

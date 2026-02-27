@@ -1,0 +1,5 @@
+deploy:
+  machine_name: "minimoi.mynetgear.com"  # Utilisé si location: remote
+  port: 8885                             # Port d'écoute (local ou remote)
+  target_directory: "/opt/rpgpdf2txt/"   # Utilisé si location: remote
+  app_prefix: "/rpgpdf2txt"              # Préfixe de l'application déployée pour https://<machine_name>/<app_prefix>

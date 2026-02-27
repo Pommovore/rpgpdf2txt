@@ -1,11 +1,14 @@
+// Lecture dynamique du préfixe de l'application
+const APP_PREFIX = document.querySelector('meta[name="app-prefix"]')?.content || '';
+
 const token = localStorage.getItem('access_token');
 if (!token) {
-    window.location.href = '/login';
+    window.location.href = `${APP_PREFIX}/login`;
 }
 
 function logout() {
     localStorage.removeItem('access_token');
-    window.location.href = '/login';
+    window.location.href = `${APP_PREFIX}/login`;
 }
 
 document.getElementById('extractForm').addEventListener('submit', async (e) => {
@@ -25,7 +28,7 @@ document.getElementById('extractForm').addEventListener('submit', async (e) => {
     btn.textContent = 'Envoi...';
 
     try {
-        const response = await fetch('/api/v1/extract', {
+        const response = await fetch(`${APP_PREFIX}/api/v1/extract`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -55,14 +58,14 @@ document.getElementById('extractForm').addEventListener('submit', async (e) => {
 
 async function loadRequests() {
     try {
-        const response = await fetch('/api/v1/user/requests', {
+        const response = await fetch(`${APP_PREFIX}/api/v1/user/requests`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
 
         if (response.status === 401) {
-            window.location.href = '/login';
+            window.location.href = `${APP_PREFIX}/login`;
             return;
         }
 
@@ -84,7 +87,7 @@ async function loadRequests() {
             switch (req.status) {
                 case 'success':
                     statusBadge = '<span class="badge bg-success">Terminé</span>';
-                    actionBtn = `<a href="/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-success">Télécharger .txt</a>`;
+                    actionBtn = `<a href="${APP_PREFIX}/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-success">Télécharger .txt</a>`;
                     break;
                 case 'pending':
                     statusBadge = '<span class="badge bg-warning text-dark">En attente</span>';

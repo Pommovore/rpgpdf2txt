@@ -1,16 +1,19 @@
+// Lecture dynamique du préfixe de l'application
+const APP_PREFIX = document.querySelector('meta[name="app-prefix"]')?.content || '';
+
 const token = localStorage.getItem('access_token');
 if (!token) {
-    window.location.href = '/login';
+    window.location.href = `${APP_PREFIX}/login`;
 }
 
 function logout() {
     localStorage.removeItem('access_token');
-    window.location.href = '/login';
+    window.location.href = `${APP_PREFIX}/login`;
 }
 
 async function loadUsers() {
     try {
-        const response = await fetch('/api/v1/admin/users', {
+        const response = await fetch(`${APP_PREFIX}/api/v1/admin/users`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -18,7 +21,7 @@ async function loadUsers() {
 
         if (response.status === 401 || response.status === 403) {
             alert('Accès non autorisé. Veuillez vous connecter en tant qu\'administrateur.');
-            window.location.href = '/login';
+            window.location.href = `${APP_PREFIX}/login`;
             return;
         }
 
@@ -57,7 +60,7 @@ async function loadUsers() {
 
 async function validateUser(userId) {
     try {
-        const response = await fetch(`/api/v1/admin/users/${userId}/validate`, {
+        const response = await fetch(`${APP_PREFIX}/api/v1/admin/users/${userId}/validate`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`

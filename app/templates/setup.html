@@ -10,7 +10,7 @@
                     <p class="text-muted">Configuration initiale de RPGPDF2Text</p>
                 </div>
 
-                <form action="/setup" method="POST">
+                <form action="{{ app_prefix }}/setup" method="POST">
                     <div class="mb-3">
                         <label for="creator_email" class="form-label">Adresse email du Créateur</label>
                         <input type="email" class="form-control bg-dark text-light border-secondary" id="creator_email"

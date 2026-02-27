@@ -1,3 +1,6 @@
+// Lecture dynamique du préfixe de l'application
+const APP_PREFIX = document.querySelector('meta[name="app-prefix"]')?.content || '';
+
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
@@ -5,7 +8,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     errorDiv.classList.add('d-none');
 
     try {
-        const response = await fetch('/api/v1/auth/login', {
+        const response = await fetch(`${APP_PREFIX}/api/v1/auth/login`, {
             method: 'POST',
             body: formData
         });
@@ -17,7 +20,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             errorDiv.classList.remove('d-none');
         } else {
             localStorage.setItem('access_token', data.access_token);
-            window.location.href = '/dashboard';
+            window.location.href = `${APP_PREFIX}/dashboard`;
         }
     } catch (err) {
         errorDiv.textContent = 'Erreur serveur. Veuillez réessayer plus tard.';
