@@ -6,9 +6,44 @@ if (!token) {
     window.location.href = `${APP_PREFIX}/login`;
 }
 
+// Intervalle de polling (null = inactif)
+let pollingInterval = null;
+const POLL_DELAY_MS = 5000;
+
 function logout() {
     localStorage.removeItem('access_token');
+    stopPolling();
     window.location.href = `${APP_PREFIX}/login`;
+}
+
+/**
+ * Démarre le rafraîchissement automatique du tableau des demandes.
+ */
+function startPolling() {
+    if (pollingInterval) return; // Déjà actif
+    pollingInterval = setInterval(loadRequests, POLL_DELAY_MS);
+    updatePollingIndicator(true);
+}
+
+/**
+ * Arrête le rafraîchissement automatique.
+ */
+function stopPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+    updatePollingIndicator(false);
+}
+
+/**
+ * Met à jour l'indicateur visuel de rafraîchissement automatique.
+ */
+function updatePollingIndicator(active) {
+    const indicator = document.getElementById('pollingIndicator');
+    if (indicator) {
+        indicator.style.display = active ? 'inline' : 'none';
+    }
 }
 
 document.getElementById('extractForm').addEventListener('submit', async (e) => {
@@ -43,6 +78,8 @@ document.getElementById('extractForm').addEventListener('submit', async (e) => {
             msgDiv.classList.add('alert-success', 'd-block');
             form.reset();
             loadRequests();
+            // Démarrer le polling automatique
+            startPolling();
         } else {
             msgDiv.textContent = data.detail || 'Échec du démarrage de l\'extraction';
             msgDiv.classList.add('alert-danger', 'd-block');
@@ -75,8 +112,12 @@ async function loadRequests() {
 
         if (requests.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3">Aucune demande d\'extraction trouvée</td></tr>';
+            stopPolling();
             return;
         }
+
+        // Vérifie s'il reste des extractions en cours
+        const hasActiveJobs = requests.some(r => r.status === 'pending' || r.status === 'processing');
 
         requests.forEach(req => {
             const tr = document.createElement('tr');
@@ -94,7 +135,7 @@ async function loadRequests() {
                     actionBtn = `<span class="text-muted small">Dans la file d\'attente</span>`;
                     break;
                 case 'processing':
-                    statusBadge = '<span class="badge bg-info text-dark">En cours</span>';
+                    statusBadge = '<span class="badge bg-info text-dark"><span class="spinner-border spinner-border-sm me-1"></span>En cours</span>';
                     actionBtn = `<span class="text-muted small">Extraction...</span>`;
                     break;
                 case 'error':
@@ -114,6 +155,11 @@ async function loadRequests() {
             `;
             tbody.appendChild(tr);
         });
+
+        // Arrêter le polling si plus rien n'est en cours
+        if (!hasActiveJobs) {
+            stopPolling();
+        }
     } catch (err) {
         console.error('Échec du chargement des demandes', err);
     }
@@ -122,3 +168,4 @@ async function loadRequests() {
 document.addEventListener('DOMContentLoaded', () => {
     loadRequests();
 });
+
