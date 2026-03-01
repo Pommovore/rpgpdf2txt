@@ -35,3 +35,23 @@ Lorsqu'un utilisateur soumet un PDF depuis son tableau de bord :
     - L'application prévient simultanément le service tiers (sur l'URL webhook fournie à l'étape 1) du succès de l'opération en lui envoyant le contenu final.
 
 Ce fonctionnement garantit une isolation de la donnée tout en permettant au service tiers (bot Discord, site web, intégration personnalisée) d'exploiter la donnée proprement formatée dès qu'elle est prête.
+
+## Exemple d'utilisation de l'API avec cURL
+
+Voici un exemple de requête HTTP POST pour soumettre un document PDF à l'API d'extraction :
+
+```bash
+curl -X POST "https://votre-domaine.com/api/v1/extract" \
+  -H "Authorization: Bearer VOTRE_TOKEN_JWT" \
+  -F "id_texte=mon_texte_01" \
+  -F "webhook_url=https://votre-site.com/webhook/reception" \
+  -F "ia_validate=true" \
+  -F "pdf_file=@/chemin/vers/votre_fichier.pdf"
+```
+
+### Paramètres de la requête :
+- **Authorization** : Token JWT de l'utilisateur (nécessite une authentification par le Header).
+- **id_texte** : Un identifiant unique pour votre document (minimum 3 caractères).
+- **webhook_url** : L'URL de votre service qui sera appelée par le système une fois l'extraction terminée (recevra en POST le statut et l'URL de téléchargement).
+- **ia_validate** : (`true` ou `false`) Active ou désactive la correction sémantique du texte par l'IA.
+- **pdf_file** : Le fichier PDF à traiter (envoi en tant que fichier via `multipart/form-data`).

@@ -41,7 +41,55 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-    // Store JWT token handling for later pages
+    document.addEventListener('DOMContentLoaded', () => {
+      const appPrefix = document.querySelector('meta[name="app-prefix"]')?.content || '';
+      const token = localStorage.getItem('access_token');
+      const navMenu = document.querySelector('#navbarCollapse .navbar-nav');
+      const authDiv = document.querySelector('#navbarCollapse .d-flex');
+
+      if (token) {
+        let isAdmin = false;
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          if (payload.role === 'admin' || payload.role === 'creator') {
+            isAdmin = true;
+          }
+        } catch (e) {
+          console.error("Invalid token format");
+        }
+
+        let navHtml = `
+          <li class="nav-item">
+            <a class="nav-link" href="${appPrefix}/dashboard">Dashboard</a>
+          </li>
+        `;
+
+        if (isAdmin) {
+          navHtml += `
+            <li class="nav-item">
+              <a class="nav-link" href="${appPrefix}/admin">Admin</a>
+            </li>
+          `;
+        }
+
+        if (navMenu) {
+          navMenu.innerHTML = navHtml;
+          // Highlight active link
+          const currentPath = window.location.pathname;
+          document.querySelectorAll('#navbarCollapse .nav-link').forEach(link => {
+            if (link.getAttribute('href') === currentPath) {
+              link.classList.add('active');
+            }
+          });
+        }
+
+        if (authDiv) {
+          authDiv.innerHTML = `
+            <button class="btn btn-outline-danger" onclick="localStorage.removeItem('access_token'); window.location.href='${appPrefix}/login'">Déconnexion</button>
+          `;
+        }
+      }
+    });
   </script>
 </body>
 

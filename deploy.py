@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """
-Script de déploiement distant pour RPGPDF2Text.
-Se connecte en SSH à la machine cible définie dans config/deployment.yaml
-et y recopie l'application.
+Script de déploiement pour RPGPDF2Text (Local et Distant).
 
-Utilisation :
-    python deploiement.py [--dry-run]
+Options :
+    --dev    : Déploiement local (installation des dépendances).
+    --prod   : Déploiement complet distant (fichiers + config Nginx/Systemd).
+    --update : Déploiement partiel distant (uniquement les fichiers suivis par git).
+    --dry-run: Prévisualise les fichiers transférés (pour --prod ou --update).
 
-Variables d'environnement requises :
+Variables d'environnement requises (pour --prod et --update) :
     REMOTE_LOGIN  : nom d'utilisateur SSH
     REMOTE_PWD    : mot de passe SSH (ou utiliser une clé SSH)
-
-Dépendances supplémentaires (ne sont PAS dans requirements.txt car ne concernent pas l'app elle-même) :
-    uv pip install paramiko
 """
 
 import os
 import sys
 import argparse
 import yaml
+import subprocess
 from pathlib import Path
 from loguru import logger
 
@@ -28,7 +27,7 @@ logger.add(sys.stdout, format="<green>{time:HH:mm:ss}</green> | <level>{level: <
 
 # ─── Chemins de base ────────────────────────────────────────────────────────────
 PROJECT_DIR = Path(__file__).parent
-CONFIG_PATH = PROJECT_DIR / "config" / "deployment.yaml"
+CONFIG_PATH = PROJECT_DIR / "config" / "deploy.yaml"
 
 def load_config() -> dict:
     """Charge la configuration de déploiement."""
@@ -43,7 +42,7 @@ def load_config() -> dict:
     required_keys = ["machine_name", "port", "target_directory", "app_prefix"]
     for key in required_keys:
         if key not in deploy:
-            logger.error(f"Clé manquante dans deployment.yaml : {key}")
+            logger.error(f"Clé manquante dans deploy.yaml : {key}")
             sys.exit(1)
 
     return deploy
@@ -62,11 +61,11 @@ def get_credentials() -> tuple:
     return login, pwd
 
 
-# Répertoires à ne jamais traverser
+# Répertoires à ne jamais traverser ou transférer
 EXCLUDE_DIRS = {".venv", ".git", "__pycache__", "data", "tokens", ".github"}
 
 # Fichiers individuels à exclure
-EXCLUDE_FILES = {".env", "ci_test.db", "deploiement.py"}
+EXCLUDE_FILES = {".env", "ci_test.db", "deploiement.py", "deploy.py", "update_deploy.py"}
 
 # Extensions à exclure
 EXCLUDE_EXTENSIONS = {".pyc"}
@@ -89,11 +88,38 @@ def collect_files(base_dir: Path) -> list:
     return files
 
 
+def collect_git_files(base_dir: Path) -> list:
+    """Collecte uniquement les fichiers suivis par git, en excluant ceux à ignorer."""
+    result = subprocess.run(["git", "ls-files"], cwd=base_dir, capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.warning("Échec de la commande 'git ls-files', utilisation de la collecte standard (tous les fichiers).")
+        return collect_files(base_dir)
+
+    files = []
+    for line in result.stdout.splitlines():
+        if not line:
+            continue
+        f = Path(line)
+        # Exclusions manuelles supplémentaires
+        if f.name in EXCLUDE_FILES or any(f.name.endswith(ext) for ext in EXCLUDE_EXTENSIONS):
+            continue
+        if any(p in EXCLUDE_DIRS for p in f.parts):
+            continue
+        
+        full_path = base_dir / f
+        if not full_path.exists():
+            continue
+            
+        files.append(full_path)
+
+    return files
+
+
 def generate_env_file(config: dict) -> str:
     """Génère le contenu du fichier .env pour la production."""
     prefix = config.get("app_prefix", "")
     lines = [
-        "# Fichier .env généré automatiquement par deploiement.py",
+        "# Fichier .env généré automatiquement par deploy.py",
         "# Modifiez les valeurs ci-dessous selon votre environnement de production",
         "",
         "SECRET_KEY=CHANGEZ_MOI_CLE_TRES_LONGUE_ET_SECRETE",
@@ -104,21 +130,40 @@ def generate_env_file(config: dict) -> str:
     return "\n".join(lines)
 
 
-def deploy_remote(config: dict, login: str, pwd: str):
+def deploy_local():
+    """Effectue un déploiement local (mode --dev)."""
+    logger.info("Démarrage du processus de préparation pour l'environnement: Développement Local")
+    logger.info("Mise à jour des dépendances avec uv...")
+    ret = os.system("uv pip install -r requirements.txt")
+    if ret == 0:
+        logger.info("✅ Déploiement local terminé avec succès.")
+        logger.info("🚀 Lancement du serveur local de développement...")
+        try:
+            os.system("uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload")
+        except KeyboardInterrupt:
+            logger.info("\n🛑 Arrêt du serveur de développement et fin du script.")
+    else:
+        logger.error("❌ Échec lors de l'installation des dépendances.")
+
+
+def deploy_remote(config: dict, login: str, pwd: str, is_update: bool):
     """Déploie l'application sur le serveur distant via SSH/SFTP."""
     try:
         import paramiko
     except ImportError:
-        logger.error("Le module 'paramiko' est requis. Installez-le avec : uv pip install paramiko")
+        logger.error("Le module 'paramiko' est requis. Installez-le en local avec : uv pip install paramiko")
         sys.exit(1)
 
     machine = config["machine_name"]
-    target_dir = config["target_directory"]
-    # Supprimer le slash final pour la cohérence
-    target_dir = target_dir.rstrip("/")
+    target_dir = config["target_directory"].rstrip("/")
 
     # Collecter les fichiers à transférer
-    files = collect_files(PROJECT_DIR)
+    if is_update:
+        logger.info("🔍 Mode --update : collecte restreinte aux fichiers suivis par git.")
+        files = collect_git_files(PROJECT_DIR)
+    else:
+        files = collect_files(PROJECT_DIR)
+
     logger.info(f"📦 {len(files)} fichiers à transférer")
 
     # Connexion SSH
@@ -131,7 +176,6 @@ def deploy_remote(config: dict, login: str, pwd: str):
         if pwd:
             connect_kwargs["password"] = pwd
         else:
-            # Tenter la connexion par clé SSH par défaut
             logger.info("  Pas de mot de passe fourni, tentative par clé SSH...")
         ssh.connect(**connect_kwargs)
         logger.info("✅ Connexion SSH établie")
@@ -140,6 +184,14 @@ def deploy_remote(config: dict, login: str, pwd: str):
         sys.exit(1)
 
     sftp = ssh.open_sftp()
+
+    def run_sudo(cmd: str):
+        """Exécute une commande en sudo proprement via la connexion SSH active."""
+        if pwd:
+            # Passe le mot de passe via l'entrée standard pour contourner l'invite sudo
+            _ssh_exec(ssh, f"echo '{pwd}' | sudo -S {cmd}", show_output=True)
+        else:
+            _ssh_exec(ssh, f"sudo {cmd}", show_output=True)
 
     try:
         # Créer le répertoire cible s'il n'existe pas
@@ -173,35 +225,47 @@ def deploy_remote(config: dict, login: str, pwd: str):
         logger.info(f"📤 {transferred}/{len(files)} fichiers transférés avec succès")
 
         # Générer le .env de production s'il n'existe pas déjà
-        try:
-            sftp.stat(f"{target_dir}/.env")
-            logger.info("📝 Le fichier .env existe déjà sur le serveur, il n'est pas écrasé")
-        except FileNotFoundError:
-            env_content = generate_env_file(config)
-            with sftp.open(f"{target_dir}/.env", "w") as remote_env:
-                remote_env.write(env_content)
-            logger.info("📝 Fichier .env de production créé (pensez à modifier SECRET_KEY !)")
+        if not is_update:
+            try:
+                sftp.stat(f"{target_dir}/.env")
+                logger.info("📝 Le fichier .env existe déjà sur le serveur, il n'est pas écrasé")
+            except FileNotFoundError:
+                env_content = generate_env_file(config)
+                with sftp.open(f"{target_dir}/.env", "w") as remote_env:
+                    remote_env.write(env_content)
+                logger.info("📝 Fichier .env de production créé (pensez à modifier SECRET_KEY !)")
 
         # Créer les répertoires de données sur le serveur
         data_dirs = ["data", "data/db", "data/logs", "data/users", "data/temp"]
         for d in data_dirs:
             _ssh_exec(ssh, f"mkdir -p {target_dir}/{d}")
-        logger.info("📁 Répertoires de données créés")
+        logger.info("📁 Répertoires de données vérifiés/créés")
 
         # Installer les dépendances sur le serveur
-        # L'environnement SSH non interactif ne charge pas tjs le ~/.profile, on ajoute les chemins courants d'install uv au PATH
-        logger.info("📦 Installation des dépendances sur le serveur...")
+        logger.info("📦 Mise à jour des dépendances sur le serveur...")
         _ssh_exec(ssh, f"cd {target_dir} && export PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin && uv venv && uv pip install -r requirements.txt", show_output=True)
 
-        logger.info("🎉 Déploiement terminé avec succès !")
-        logger.info("")
-        logger.info("═" * 60)
-        logger.info("📋 ÉTAPES SUIVANTES :")
-        logger.info(f"  1. Modifiez {target_dir}/.env (SECRET_KEY, etc.)")
-        logger.info(f"  2. Configurez nginx (voir config/nginx_rpgpdf2txt.conf)")
-        logger.info(f"  3. Installez le service systemd (voir config/rpgpdf2txt.service)")
-        logger.info(f"  4. Lancez : sudo systemctl start rpgpdf2txt")
-        logger.info("═" * 60)
+        if is_update:
+            logger.info("🔄 Mode --update : Redémarrage exclusif du service applicatif...")
+            run_sudo("systemctl restart rpgpdf2txt")
+            logger.info("✅ Service relancé avec le nouveau code.")
+        else:
+            logger.info("⚙️  Mode --prod : Application des configurations globales (Nginx/Systemd)...")
+            # Config Nginx
+            run_sudo(f"cp {target_dir}/config/nginx_rpgpdf2txt.conf /etc/nginx/apps/rpgpdf2txt.conf")
+            run_sudo("nginx -t")
+            run_sudo("systemctl reload nginx")
+            # Config Systemd
+            run_sudo(f"cp {target_dir}/config/rpgpdf2txt.service /etc/systemd/system/")
+            run_sudo("systemctl daemon-reload")
+            run_sudo("systemctl enable rpgpdf2txt")
+            run_sudo("systemctl restart rpgpdf2txt")
+            
+            logger.info("🎉 Déploiement global (--prod) terminé avec succès !")
+            logger.info("═" * 60)
+            logger.info("📋 RAPPEL :")
+            logger.info(f"  - Vérifiez {target_dir}/.env (SECRET_KEY) si c'est la toute première installation.")
+            logger.info("═" * 60)
 
     finally:
         sftp.close()
@@ -209,7 +273,7 @@ def deploy_remote(config: dict, login: str, pwd: str):
         logger.info("🔒 Connexion SSH fermée")
 
 
-def dry_run(config: dict):
+def dry_run(config: dict, is_update: bool):
     """Affiche les fichiers qui seraient transférés, sans connexion SSH."""
     target_dir = config["target_directory"].rstrip("/")
 
@@ -218,14 +282,19 @@ def dry_run(config: dict):
     logger.info(f"🔗 Préfixe app     : {config['app_prefix']}")
     logger.info(f"🔌 Port            : {config['port']}")
 
-    files = collect_files(PROJECT_DIR)
+    if is_update:
+        logger.info("🔍 Mode --update : collecte restreinte aux fichiers suivis par git.")
+        files = collect_git_files(PROJECT_DIR)
+    else:
+        files = collect_files(PROJECT_DIR)
+
     logger.info(f"📦 {len(files)} fichiers seraient transférés :")
     logger.info("")
     for f in files:
         rel = f.relative_to(PROJECT_DIR)
         logger.info(f"   → {rel}")
     logger.info("")
-    logger.info("🔍 Mode dry-run : aucun transfert effectué")
+    logger.info("🔍 Mode --dry-run : aucun transfert ni action n'ont été effectués.")
 
 
 def _ssh_exec(ssh, command: str, show_output: bool = False):
@@ -245,25 +314,36 @@ def _ssh_exec(ssh, command: str, show_output: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Déploiement distant de RPGPDF2Text sur le serveur cible"
+        description="Script de déploiement RPGPDF2Text (Local et Distant)"
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Affiche les fichiers qui seraient transférés sans effectuer le déploiement"
-    )
+    parser.add_argument("--dev", action="store_true", help="Déployer en environnement de développement (local)")
+    parser.add_argument("--prod", action="store_true", help="Déploiement complet en production (distant)")
+    parser.add_argument("--update", action="store_true", help="Mise à jour légère en production (git-tracked, pas de modif Nginx/Systemd)")
+    parser.add_argument("--dry-run", action="store_true", help="Affiche les fichiers qui seraient transférés sans effectuer le déploiement")
+    
     args = parser.parse_args()
 
-    logger.info("🚀 RPGPDF2Text — Script de déploiement distant")
+    # Vérification des options
+    if not any([args.dev, args.prod, args.update]):
+        logger.error("❌ Action manquante : Veuillez spécifier --dev, --prod ou --update.")
+        parser.print_help()
+        sys.exit(1)
+
+    logger.info("🚀 RPGPDF2Text — Opération de déploiement initiée")
     logger.info("")
 
+    if args.dev:
+        deploy_local()
+        return
+
+    # Pour --prod et --update, on charge la configuration distante
     config = load_config()
 
     if args.dry_run:
-        dry_run(config)
+        dry_run(config, is_update=args.update)
     else:
         login, pwd = get_credentials()
-        deploy_remote(config, login, pwd)
+        deploy_remote(config, login, pwd, is_update=args.update)
 
 
 if __name__ == "__main__":
