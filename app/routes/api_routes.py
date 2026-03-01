@@ -17,7 +17,7 @@ router = APIRouter()
 @router.get("/admin/users")
 def get_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_admin_user)):
     users = db.query(User).all()
-    return [{"id": u.id, "email": u.email, "role": u.role, "is_validated": u.is_validated, "directory_name": u.directory_name} for u in users]
+    return [{"id": u.id, "email": u.email, "role": u.role, "is_validated": u.is_validated, "directory_name": u.directory_name, "api_token": u.api_token} for u in users]
 
 @router.post("/admin/users/{user_id}/validate")
 def validate_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_admin_user)):
@@ -91,51 +91,77 @@ async def extract_document(
         logger.info(f"Tentative de téléchargement du PDF depuis l'URL: {pdf_url}")
         
         # Gestion spécifique Google Drive
-        download_url = pdf_url
         if "drive.google.com" in pdf_url:
-            # Conversion d'un lien 'view' ou 'open' en lien direct 'uc?export=download'
-            # Exemple: https://drive.google.com/file/d/ID/view?usp=sharing -> https://drive.google.com/uc?export=download&id=ID
             match = re.search(r"/d/([^/]+)", pdf_url)
+            if not match:
+                match = re.search(r"id=([^&]+)", pdf_url)
+                
             if match:
                 file_id = match.group(1)
-                download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-                logger.info(f"Lien Google Drive détecté, conversion en lien de téléchargement direct: {download_url}")
-
-        try:
-            import requests
-            response = requests.get(download_url, stream=True, timeout=30)
-            response.raise_for_status()
-            
-            # Vérification basique du Content-Type (certaines URLs ne le fournissent pas correctement)
-            content_type = response.headers.get('Content-Type', '').lower()
-            if 'html' in content_type and "drive.google.com" in download_url:
-                # Souvent une page d'avertissement de virus de Google Drive si le fichier est gros
-                logger.warning("Google Drive a renvoyé du HTML au lieu du PDF (probable avertissement scan virus).")
-                # Tentative sans confirmer
-                # On continue quand même l'écriture pour voir
-            
-            with open(file_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            
-            # Vérification magique (PDF signature \x25\x50\x44\x46)
-            with open(file_path, "rb") as f:
-                header = f.read(4)
-                if header != b"%PDF":
-                    os.remove(file_path)
-                    logger.error(f"Le fichier téléchargé n'est pas un PDF valide ou contient du HTML d'erreur. Header: {header}")
-                    raise HTTPException(status_code=400, detail="The URL did not point to a valid PDF file (maybe a private Google Drive link?)")
+                logger.info(f"Lien Google Drive détecté (ID: {file_id}), utilisation de la logique robuste...")
+                
+                try:
+                    import requests
+                    session = requests.Session()
+                    # 1. Tentative initiale pour obtenir le cookie et éventuellement le token de confirmation
+                    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+                    response = session.get(download_url, stream=True, timeout=30)
                     
-            logger.info(f"Téléchargement réussi: {file_path}")
-            
-        except Exception as e:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            logger.error(f"Erreur lors du téléchargement: {e}")
-            detail = "Failed to download PDF from the provided URL"
-            if isinstance(e, HTTPException):
-                raise e
-            raise HTTPException(status_code=400, detail=detail)
+                    # 2. Vérification si Google demande une confirmation pour les gros fichiers
+                    confirm_token = None
+                    for key, value in response.cookies.items():
+                        if key.startswith('download_warning'):
+                            confirm_token = value
+                            break
+                    
+                    if not confirm_token:
+                        if 'text/html' in response.headers.get('Content-Type', ''):
+                            confirm_match = re.search(r'confirm=([0-9A-Za-z_]+)', response.text)
+                            if confirm_match:
+                                confirm_token = confirm_match.group(1)
+                    
+                    if confirm_token:
+                        logger.info(f"Token de confirmation détecté ({confirm_token}), second passage...")
+                        download_url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={confirm_token}"
+                        response = session.get(download_url, stream=True, timeout=30)
+                    
+                    response.raise_for_status()
+                    
+                    # Sauvegarde avec le nom demandé id_texte.tmp.pdf
+                    file_path = os.path.abspath(os.path.join(settings.TEMP_DIR, f"{id_texte}.tmp.pdf"))
+                    
+                    with open(file_path, "wb") as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    
+                    # Vérification signature PDF
+                    with open(file_path, "rb") as f:
+                        if f.read(4) != b"%PDF":
+                            logger.error("Le fichier téléchargé Google Drive n'est pas un PDF valide.")
+                            os.remove(file_path)
+                            raise HTTPException(status_code=400, detail="Google Drive link did not return a valid PDF (private file or invalid link?)")
+                    
+                    logger.info(f"Téléchargement Google Drive réussi: {file_path}")
+                except Exception as e:
+                    logger.error(f"Échec Google Drive: {e}")
+                    if isinstance(e, HTTPException): raise e
+                    raise HTTPException(status_code=400, detail=f"Failed to download from Google Drive: {str(e)}")
+            else:
+                raise HTTPException(status_code=400, detail="Invalid Google Drive link format")
+        else:
+            # Téléchargement standard pour les autres URLs
+            try:
+                import requests
+                response = requests.get(pdf_url, stream=True, timeout=30)
+                response.raise_for_status()
+                file_path = os.path.abspath(os.path.join(settings.TEMP_DIR, f"{id_texte}.tmp.pdf"))
+                with open(file_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                logger.info(f"Téléchargement réussi: {file_path}")
+            except Exception as e:
+                logger.error(f"Échec téléchargement URL: {e}")
+                raise HTTPException(status_code=400, detail=f"Failed to download from URL: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail="Missing pdf_file or pdf_url")
     

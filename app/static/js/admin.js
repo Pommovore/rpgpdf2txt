@@ -48,6 +48,7 @@ async function loadUsers() {
                 <td>${user.email}</td>
                 <td><span class="badge bg-info">${user.role}</span></td>
                 <td>${statusBadge}</td>
+                <td><input type="text" class="form-control form-control-sm bg-dark text-muted border-secondary" value="${user.api_token || '-'}" readonly style="width: 150px;"></td>
                 <td><code>${user.directory_name || '-'}</code></td>
                 <td>${actionBtn}</td>
             `;
