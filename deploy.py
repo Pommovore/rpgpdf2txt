@@ -200,15 +200,12 @@ def _run_db_migrations(ssh, target_dir: str):
     
     # 1. Ajouter la colonne api_token si elle n'existe pas
     check_col_cmd = f"sqlite3 {db_path} \"PRAGMA table_info(users);\""
-    stdin, stdout, stderr = ssh.exec_command(check_col_cmd)
-    output = stdout.read().decode()
+    exit_code, output = _ssh_exec_with_output(ssh, check_col_cmd)
     
     if "api_token" not in output:
         logger.info("  ➕ Ajout de la colonne 'api_token' à la table 'users'...")
-        add_col_cmd = f"sqlite3 {db_path} \"ALTER TABLE users ADD COLUMN api_token VARCHAR;\""
-        ssh.exec_command(add_col_cmd)
-        idx_cmd = f"sqlite3 {db_path} \"CREATE UNIQUE INDEX ix_users_api_token ON users (api_token);\""
-        ssh.exec_command(idx_cmd)
+        _ssh_exec(ssh, f"sqlite3 {db_path} \"ALTER TABLE users ADD COLUMN api_token VARCHAR;\"")
+        _ssh_exec(ssh, f"sqlite3 {db_path} \"CREATE UNIQUE INDEX ix_users_api_token ON users (api_token);\"")
     else:
         logger.info("  ✅ La colonne 'api_token' existe déjà.")
 
@@ -218,9 +215,16 @@ def _run_db_migrations(ssh, target_dir: str):
         f"sqlite3 {db_path} \"UPDATE users SET api_token = hex(randomblob(16)) "
         "WHERE api_token IS NULL AND (role IN ('admin', 'creator') OR is_validated = 1);\""
     )
-    ssh.exec_command(backfill_cmd)
+    _ssh_exec(ssh, backfill_cmd)
     logger.info("  ✅ Migrations terminées.")
 
+
+def _ssh_exec_with_output(ssh, command: str):
+    """Exécute une commande SSH et retourne le code de sortie et le stdout."""
+    stdin, stdout, stderr = ssh.exec_command(command)
+    exit_code = stdout.channel.recv_exit_status()
+    output = stdout.read().decode().strip()
+    return exit_code, output
 
 def _transfer_files(ssh, sftp, files: list, target_dir: str):
     """Crée les dossiers distants et transfère les fichiers spécifiés."""
@@ -294,11 +298,10 @@ def deploy_remote(config: dict, login: str, pwd: str):
         # Config Systemd
         run_sudo(f"cp {target_dir}/config/rpgpdf2txt.service /etc/systemd/system/")
         run_sudo("systemctl daemon-reload")
-        run_sudo("systemctl enable rpgpdf2txt")
-        run_sudo("systemctl restart rpgpdf2txt")
-        
         # Exécuter les migrations DB
         _run_db_migrations(ssh, target_dir)
+
+        run_sudo("systemctl restart rpgpdf2txt")
         
         logger.info("🎉 Déploiement global (--prod) terminé avec succès !")
         logger.info("═" * 60)
@@ -333,11 +336,11 @@ def update_remote(config: dict, login: str, pwd: str):
         logger.info("📦 Vérification des dépendances sur le serveur...")
         _ssh_exec(ssh, f"cd {target_dir} && export PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin && uv venv && uv pip install -r requirements.txt", show_output=True)
 
-        logger.info("🔄 Mode --update : Redémarrage exclusif du service applicatif...")
-        run_sudo("systemctl restart rpgpdf2txt")
-        
         # Exécuter les migrations DB
         _run_db_migrations(ssh, target_dir)
+
+        logger.info("🔄 Mode --update : Redémarrage exclusif du service applicatif...")
+        run_sudo("systemctl restart rpgpdf2txt")
         
         logger.info("✅ Service relancé avec le nouveau code.")
 
