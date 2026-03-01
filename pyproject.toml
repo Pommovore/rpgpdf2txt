@@ -8,4 +8,5 @@ dependencies = [
     "loguru>=0.7.3",
     "paramiko>=4.0.0",
     "pyyaml>=6.0.3",
+    "requests>=2.32.5",
 ]
