@@ -166,7 +166,10 @@ async function loadRequests() {
 }
 
 async function loadUserProfile() {
+    console.log("Chargement du profil utilisateur...");
     const tokenInput = document.getElementById('apiTokenInput');
+    if (!tokenInput) return;
+
     try {
         const response = await fetch(`${APP_PREFIX}/api/v1/auth/me`, {
             headers: {
@@ -174,22 +177,19 @@ async function loadUserProfile() {
             }
         });
 
+        console.log("Répone /me:", response.status);
+
         if (response.ok) {
             const user = await response.json();
-            if (tokenInput) {
-                tokenInput.value = user.api_token || "Token non généré (contactez l'administrateur)";
-            }
+            console.log("Données utilisateur reçues, token présent:", !!user.api_token);
+            tokenInput.value = user.api_token || "Token non généré (contactez l'administrateur)";
         } else {
             console.error('Erreur profil:', response.status);
-            if (tokenInput) {
-                tokenInput.value = `Erreur ${response.status} (Profil)`;
-            }
+            tokenInput.value = `Erreur ${response.status} (Profil)`;
         }
     } catch (err) {
         console.error('Erreur lors du chargement du profil utilisateur:', err);
-        if (tokenInput) {
-            tokenInput.value = "Erreur de connexion (Profil)";
-        }
+        tokenInput.value = "Erreur réseau/connexion";
     }
 }
 

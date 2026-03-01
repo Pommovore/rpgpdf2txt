@@ -209,13 +209,19 @@ def _run_db_migrations(ssh, target_dir: str):
     else:
         logger.info("  ✅ La colonne 'api_token' existe déjà.")
 
-    # 2. Backfill des tokens pour les admins et créateurs existants qui n'en ont pas
-    logger.info("  🔑 Génération des tokens pour les créateurs et administrateurs existants...")
-    backfill_cmd = (
-        f"sqlite3 {db_path} \"UPDATE users SET api_token = hex(randomblob(16)) "
-        "WHERE api_token IS NULL AND (role IN ('admin', 'creator') OR is_validated = 1);\""
+    # 2. Backfill des tokens via un script Python sur le serveur (plus robuste que le shell)
+    logger.info("  🔑 Vérification et backfill des tokens API...")
+    py_backfill = (
+        "import sqlite3, secrets; "
+        f"conn = sqlite3.connect('{db_path}'); cur = conn.cursor(); "
+        "cur.execute('SELECT id FROM users WHERE api_token IS NULL AND (role IN (\"admin\", \"creator\") OR is_validated = 1)'); "
+        "users = cur.fetchall(); "
+        "for u in users: "
+        "  token = secrets.token_urlsafe(32); "
+        "  cur.execute('UPDATE users SET api_token = ? WHERE id = ?', (token, u[0])); "
+        "conn.commit(); conn.close(); print(f'Backfilled {len(users)} users')"
     )
-    _ssh_exec(ssh, backfill_cmd)
+    _ssh_exec(ssh, f"python3 -c '{py_backfill}'", show_output=True)
     logger.info("  ✅ Migrations terminées.")
 
 
