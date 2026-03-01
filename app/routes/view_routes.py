@@ -32,7 +32,19 @@ async def admin_page(request: Request):
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request, "app_prefix": _prefix})
+    return RedirectResponse(url=f"{_prefix}/extraction", status_code=302)
+
+@router.get("/extraction", response_class=HTMLResponse)
+async def extraction_page(request: Request):
+    return templates.TemplateResponse("extraction.html", {"request": request, "app_prefix": _prefix})
+
+@router.get("/history", response_class=HTMLResponse)
+async def history_page(request: Request):
+    return templates.TemplateResponse("history.html", {"request": request, "app_prefix": _prefix})
+
+@router.get("/preferences", response_class=HTMLResponse)
+async def preferences_page(request: Request):
+    return templates.TemplateResponse("preferences.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):

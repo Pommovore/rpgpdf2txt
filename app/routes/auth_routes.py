@@ -37,3 +37,23 @@ def read_users_me(current_user: User = Depends(get_current_active_user)):
         "is_validated": current_user.is_validated,
         "api_token": current_user.api_token
     }
+
+from pydantic import BaseModel
+from app.core.security import get_password_hash
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.post("/change-password")
+async def change_password(
+    data: PasswordChangeRequest, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_active_user)
+):
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Ancien mot de passe incorrect")
+    
+    current_user.hashed_password = get_password_hash(data.new_password)
+    db.commit()
+    return {"msg": "Mot de passe mis à jour avec succès"}
