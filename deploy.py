@@ -209,19 +209,37 @@ def _run_db_migrations(ssh, target_dir: str):
     else:
         logger.info("  ✅ La colonne 'api_token' existe déjà.")
 
-    # 2. Backfill des tokens via un script Python sur le serveur (plus robuste que le shell)
+    # 2. Backfill des tokens via un script Python sur le serveur
     logger.info("  🔑 Vérification et backfill des tokens API...")
-    py_backfill = (
-        "import sqlite3, secrets; "
-        f"conn = sqlite3.connect('{db_path}'); cur = conn.cursor(); "
-        "cur.execute('SELECT id FROM users WHERE api_token IS NULL AND (role IN (\"admin\", \"creator\") OR is_validated = 1)'); "
-        "users = cur.fetchall(); "
-        "for u in users: "
-        "  token = secrets.token_urlsafe(32); "
-        "  cur.execute('UPDATE users SET api_token = ? WHERE id = ?', (token, u[0])); "
-        "conn.commit(); conn.close(); print(f'Backfilled {len(users)} users')"
-    )
-    _ssh_exec(ssh, f"python3 -c '{py_backfill}'", show_output=True)
+    
+    remote_script_path = f"{target_dir}/tmp_migrate.py"
+    py_backfill = f"""
+import sqlite3
+import secrets
+try:
+    conn = sqlite3.connect("{db_path}")
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE api_token IS NULL AND (role IN ('admin', 'creator') OR is_validated = 1)")
+    users = cur.fetchall()
+    for u in users:
+        token = secrets.token_urlsafe(32)
+        cur.execute("UPDATE users SET api_token = ? WHERE id = ?", (token, u[0]))
+    conn.commit()
+    conn.close()
+    print(f"Backfilled {{len(users)}} users")
+except Exception as e:
+    print(f"Migration error: {{e}}")
+    exit(1)
+"""
+    # Créer le fichier sur le serveur
+    _ssh_exec(ssh, f"cat << 'EOF' > {remote_script_path}\n{py_backfill}\nEOF")
+    
+    # Exécuter le script
+    _ssh_exec(ssh, f"python3 {remote_script_path}", show_output=True)
+    
+    # Supprimer le script temporaire
+    _ssh_exec(ssh, f"rm {remote_script_path}")
+    
     logger.info("  ✅ Migrations terminées.")
 
 

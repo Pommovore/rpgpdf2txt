@@ -5,7 +5,7 @@ import os
 
 def load_deploy_config() -> dict:
     """Charge la configuration de déploiement depuis config/deployment.yaml."""
-    config_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "deployment.yaml")
+    config_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "deploy.yaml")
     config_path = os.path.abspath(config_path)
     if os.path.exists(config_path):
         try:
@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "RPGPDF2Text API"
     API_V1_STR: str = "/api/v1"
     BASE_URL: str = Field(default="http://localhost:8000")
+    
+    @property
+    def EXTERNAL_URL(self) -> str:
+        machine = _deploy_config.get("machine_name", "localhost")
+        prefix = self.APP_PREFIX
+        # Si on est sur localhost, on garde probablement le port 8000 pour le dev
+        if machine == "localhost":
+            return f"http://localhost:8000{prefix}"
+        # En production, on suppose HTTPS (via Nginx configuré précédemment)
+        return f"https://{machine}{prefix}"
     
     # Préfixe de l'application (ex: "/rpgpdf2txt") pour déploiement derrière un reverse proxy
     APP_PREFIX: str = Field(default=_deploy_config.get("app_prefix", ""))

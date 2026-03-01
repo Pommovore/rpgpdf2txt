@@ -79,7 +79,7 @@ async def process_extraction(request_id: int):
             data={"sub": str(req.id), "type": "download"}, 
             expires_delta=timedelta(days=365)
         )
-        download_url = f"{settings.BASE_URL}{settings.API_V1_STR}/extract/{req.id}/download?token={download_token}"
+        download_url = f"{settings.EXTERNAL_URL}{settings.API_V1_STR}/extract/{req.id}/download?token={download_token}"
 
         await send_client_webhook(req.webhook_url, {
             "message": "L'extraction est terminée.",
