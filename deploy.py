@@ -192,6 +192,36 @@ def _setup_ssh(config: dict, login: str, pwd: str):
     return ssh, sftp, run_sudo
 
 
+def _run_db_migrations(ssh, target_dir: str):
+    """Exécute les migrations de base de données nécessaires sur le serveur."""
+    db_path = f"{target_dir}/data/db/rpgpdf2text.db"
+    
+    logger.info("🛠️  Vérification des migrations de base de données...")
+    
+    # 1. Ajouter la colonne api_token si elle n'existe pas
+    check_col_cmd = f"sqlite3 {db_path} \"PRAGMA table_info(users);\""
+    stdin, stdout, stderr = ssh.exec_command(check_col_cmd)
+    output = stdout.read().decode()
+    
+    if "api_token" not in output:
+        logger.info("  ➕ Ajout de la colonne 'api_token' à la table 'users'...")
+        add_col_cmd = f"sqlite3 {db_path} \"ALTER TABLE users ADD COLUMN api_token VARCHAR;\""
+        ssh.exec_command(add_col_cmd)
+        idx_cmd = f"sqlite3 {db_path} \"CREATE UNIQUE INDEX ix_users_api_token ON users (api_token);\""
+        ssh.exec_command(idx_cmd)
+    else:
+        logger.info("  ✅ La colonne 'api_token' existe déjà.")
+
+    # 2. Backfill des tokens pour les admins et créateurs existants qui n'en ont pas
+    logger.info("  🔑 Génération des tokens pour les créateurs et administrateurs existants...")
+    backfill_cmd = (
+        f"sqlite3 {db_path} \"UPDATE users SET api_token = hex(randomblob(16)) "
+        "WHERE api_token IS NULL AND (role IN ('admin', 'creator') OR is_validated = 1);\""
+    )
+    ssh.exec_command(backfill_cmd)
+    logger.info("  ✅ Migrations terminées.")
+
+
 def _transfer_files(ssh, sftp, files: list, target_dir: str):
     """Crée les dossiers distants et transfère les fichiers spécifiés."""
     # Créer le répertoire cible s'il n'existe pas
@@ -267,6 +297,9 @@ def deploy_remote(config: dict, login: str, pwd: str):
         run_sudo("systemctl enable rpgpdf2txt")
         run_sudo("systemctl restart rpgpdf2txt")
         
+        # Exécuter les migrations DB
+        _run_db_migrations(ssh, target_dir)
+        
         logger.info("🎉 Déploiement global (--prod) terminé avec succès !")
         logger.info("═" * 60)
         logger.info("📋 RAPPEL :")
@@ -302,6 +335,10 @@ def update_remote(config: dict, login: str, pwd: str):
 
         logger.info("🔄 Mode --update : Redémarrage exclusif du service applicatif...")
         run_sudo("systemctl restart rpgpdf2txt")
+        
+        # Exécuter les migrations DB
+        _run_db_migrations(ssh, target_dir)
+        
         logger.info("✅ Service relancé avec le nouveau code.")
 
     finally:

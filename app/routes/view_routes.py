@@ -93,12 +93,16 @@ async def setup_creator(
         import re
         dir_name = re.sub(r'[^a-zA-Z0-9_]', '', dir_name)
         
+        import secrets
+        api_token = secrets.token_urlsafe(32)
+        
         admin_user = User(
             email=creator_email,
             hashed_password=get_password_hash(admin_password),
             role="creator",
             is_validated=True,
-            directory_name=dir_name
+            directory_name=dir_name,
+            api_token=api_token
         )
         db.add(admin_user)
         
