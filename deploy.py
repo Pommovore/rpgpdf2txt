@@ -65,7 +65,15 @@ def get_credentials() -> tuple:
 EXCLUDE_DIRS = {".venv", ".git", "__pycache__", "data", "tokens", ".github"}
 
 # Fichiers individuels à exclure
-EXCLUDE_FILES = {".env", "ci_test.db", "deploiement.py", "deploy.py", "update_deploy.py"}
+EXCLUDE_FILES = {
+    ".env", 
+    "ci_test.db", 
+    "deploiement.py", 
+    "deploy.py", 
+    "update_deploy.py",
+    "nginx_rpgpdf2txt.conf",
+    "rpgpdf2txt.service"
+}
 
 # Extensions à exclure
 EXCLUDE_EXTENSIONS = {".pyc"}
@@ -146,8 +154,8 @@ def deploy_local():
         logger.error("❌ Échec lors de l'installation des dépendances.")
 
 
-def deploy_remote(config: dict, login: str, pwd: str, is_update: bool):
-    """Déploie l'application sur le serveur distant via SSH/SFTP."""
+def _setup_ssh(config: dict, login: str, pwd: str):
+    """Initialise et retourne une connexion SSH et SFTP."""
     try:
         import paramiko
     except ImportError:
@@ -155,18 +163,7 @@ def deploy_remote(config: dict, login: str, pwd: str, is_update: bool):
         sys.exit(1)
 
     machine = config["machine_name"]
-    target_dir = config["target_directory"].rstrip("/")
-
-    # Collecter les fichiers à transférer
-    if is_update:
-        logger.info("🔍 Mode --update : collecte restreinte aux fichiers suivis par git.")
-        files = collect_git_files(PROJECT_DIR)
-    else:
-        files = collect_files(PROJECT_DIR)
-
-    logger.info(f"📦 {len(files)} fichiers à transférer")
-
-    # Connexion SSH
+    
     logger.info(f"🔐 Connexion SSH à {login}@{machine}...")
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -184,56 +181,70 @@ def deploy_remote(config: dict, login: str, pwd: str, is_update: bool):
         sys.exit(1)
 
     sftp = ssh.open_sftp()
-
+    
     def run_sudo(cmd: str):
         """Exécute une commande en sudo proprement via la connexion SSH active."""
         if pwd:
-            # Passe le mot de passe via l'entrée standard pour contourner l'invite sudo
             _ssh_exec(ssh, f"echo '{pwd}' | sudo -S {cmd}", show_output=True)
         else:
             _ssh_exec(ssh, f"sudo {cmd}", show_output=True)
+            
+    return ssh, sftp, run_sudo
+
+
+def _transfer_files(ssh, sftp, files: list, target_dir: str):
+    """Crée les dossiers distants et transfère les fichiers spécifiés."""
+    # Créer le répertoire cible s'il n'existe pas
+    _ssh_exec(ssh, f"mkdir -p {target_dir}")
+
+    # Créer les sous-répertoires nécessaires sur le serveur
+    remote_dirs = set()
+    for f in files:
+        rel = f.relative_to(PROJECT_DIR)
+        parent = str(rel.parent)
+        if parent != ".":
+            remote_dirs.add(parent)
+
+    for d in sorted(remote_dirs):
+        remote_path = f"{target_dir}/{d}"
+        _ssh_exec(ssh, f"mkdir -p {remote_path}")
+
+    # Transférer les fichiers
+    transferred = 0
+    for f in files:
+        rel = f.relative_to(PROJECT_DIR)
+        remote_path = f"{target_dir}/{rel}"
+        try:
+            sftp.put(str(f), remote_path)
+            transferred += 1
+            if transferred % 20 == 0:
+                logger.info(f"  📤 {transferred}/{len(files)} fichiers transférés...")
+        except Exception as e:
+            logger.warning(f"  ⚠️  Échec du transfert de {rel} : {e}")
+
+    logger.info(f"📤 {transferred}/{len(files)} fichiers transférés avec succès")
+
+
+def deploy_remote(config: dict, login: str, pwd: str):
+    """Déploie l'application complète sur le serveur distant (--prod)."""
+    target_dir = config["target_directory"].rstrip("/")
+    files = collect_files(PROJECT_DIR)
+    logger.info(f"📦 {len(files)} fichiers à transférer en mode --prod")
+
+    ssh, sftp, run_sudo = _setup_ssh(config, login, pwd)
 
     try:
-        # Créer le répertoire cible s'il n'existe pas
-        _ssh_exec(ssh, f"mkdir -p {target_dir}")
-
-        # Créer les sous-répertoires nécessaires sur le serveur
-        remote_dirs = set()
-        for f in files:
-            rel = f.relative_to(PROJECT_DIR)
-            parent = str(rel.parent)
-            if parent != ".":
-                remote_dirs.add(parent)
-
-        for d in sorted(remote_dirs):
-            remote_path = f"{target_dir}/{d}"
-            _ssh_exec(ssh, f"mkdir -p {remote_path}")
-
-        # Transférer les fichiers
-        transferred = 0
-        for f in files:
-            rel = f.relative_to(PROJECT_DIR)
-            remote_path = f"{target_dir}/{rel}"
-            try:
-                sftp.put(str(f), remote_path)
-                transferred += 1
-                if transferred % 20 == 0:
-                    logger.info(f"  📤 {transferred}/{len(files)} fichiers transférés...")
-            except Exception as e:
-                logger.warning(f"  ⚠️  Échec du transfert de {rel} : {e}")
-
-        logger.info(f"📤 {transferred}/{len(files)} fichiers transférés avec succès")
+        _transfer_files(ssh, sftp, files, target_dir)
 
         # Générer le .env de production s'il n'existe pas déjà
-        if not is_update:
-            try:
-                sftp.stat(f"{target_dir}/.env")
-                logger.info("📝 Le fichier .env existe déjà sur le serveur, il n'est pas écrasé")
-            except FileNotFoundError:
-                env_content = generate_env_file(config)
-                with sftp.open(f"{target_dir}/.env", "w") as remote_env:
-                    remote_env.write(env_content)
-                logger.info("📝 Fichier .env de production créé (pensez à modifier SECRET_KEY !)")
+        try:
+            sftp.stat(f"{target_dir}/.env")
+            logger.info("📝 Le fichier .env existe déjà sur le serveur, il n'est pas écrasé")
+        except FileNotFoundError:
+            env_content = generate_env_file(config)
+            with sftp.open(f"{target_dir}/.env", "w") as remote_env:
+                remote_env.write(env_content)
+            logger.info("📝 Fichier .env de production créé (pensez à modifier SECRET_KEY !)")
 
         # Créer les répertoires de données sur le serveur
         data_dirs = ["data", "data/db", "data/logs", "data/users", "data/temp"]
@@ -245,27 +256,53 @@ def deploy_remote(config: dict, login: str, pwd: str, is_update: bool):
         logger.info("📦 Mise à jour des dépendances sur le serveur...")
         _ssh_exec(ssh, f"cd {target_dir} && export PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin && uv venv && uv pip install -r requirements.txt", show_output=True)
 
-        if is_update:
-            logger.info("🔄 Mode --update : Redémarrage exclusif du service applicatif...")
-            run_sudo("systemctl restart rpgpdf2txt")
-            logger.info("✅ Service relancé avec le nouveau code.")
-        else:
-            logger.info("⚙️  Mode --prod : Application des configurations globales (Nginx/Systemd)...")
-            # Config Nginx
-            run_sudo(f"cp {target_dir}/config/nginx_rpgpdf2txt.conf /etc/nginx/apps/rpgpdf2txt.conf")
-            run_sudo("nginx -t")
-            run_sudo("systemctl reload nginx")
-            # Config Systemd
-            run_sudo(f"cp {target_dir}/config/rpgpdf2txt.service /etc/systemd/system/")
-            run_sudo("systemctl daemon-reload")
-            run_sudo("systemctl enable rpgpdf2txt")
-            run_sudo("systemctl restart rpgpdf2txt")
+        logger.info("⚙️  Application des configurations globales (Nginx/Systemd)...")
+        # Config Nginx
+        run_sudo(f"cp {target_dir}/config/nginx_rpgpdf2txt.conf /etc/nginx/apps/rpgpdf2txt.conf")
+        run_sudo("nginx -t")
+        run_sudo("systemctl reload nginx")
+        # Config Systemd
+        run_sudo(f"cp {target_dir}/config/rpgpdf2txt.service /etc/systemd/system/")
+        run_sudo("systemctl daemon-reload")
+        run_sudo("systemctl enable rpgpdf2txt")
+        run_sudo("systemctl restart rpgpdf2txt")
+        
+        logger.info("🎉 Déploiement global (--prod) terminé avec succès !")
+        logger.info("═" * 60)
+        logger.info("📋 RAPPEL :")
+        logger.info(f"  - Vérifiez {target_dir}/.env (SECRET_KEY) si c'est la toute première installation.")
+        logger.info("═" * 60)
+
+    finally:
+        sftp.close()
+        ssh.close()
+        logger.info("🔒 Connexion SSH fermée")
+
+
+def update_remote(config: dict, login: str, pwd: str):
+    """Met à jour uniquement le code distant (--update)."""
+    target_dir = config["target_directory"].rstrip("/")
+    logger.info("🔍 Mode --update : collecte restreinte aux fichiers suivis par git.")
+    files = collect_git_files(PROJECT_DIR)
+    logger.info(f"📦 {len(files)} fichiers à transférer")
+
+    ssh, sftp, run_sudo = _setup_ssh(config, login, pwd)
+
+    try:
+        _transfer_files(ssh, sftp, files, target_dir)
+
+        # Créer les répertoires de données sur le serveur juste au cas où
+        data_dirs = ["data", "data/db", "data/logs", "data/users", "data/temp"]
+        for d in data_dirs:
+            _ssh_exec(ssh, f"mkdir -p {target_dir}/{d}")
             
-            logger.info("🎉 Déploiement global (--prod) terminé avec succès !")
-            logger.info("═" * 60)
-            logger.info("📋 RAPPEL :")
-            logger.info(f"  - Vérifiez {target_dir}/.env (SECRET_KEY) si c'est la toute première installation.")
-            logger.info("═" * 60)
+        # Installer les dépendances sur le serveur
+        logger.info("📦 Vérification des dépendances sur le serveur...")
+        _ssh_exec(ssh, f"cd {target_dir} && export PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin && uv venv && uv pip install -r requirements.txt", show_output=True)
+
+        logger.info("🔄 Mode --update : Redémarrage exclusif du service applicatif...")
+        run_sudo("systemctl restart rpgpdf2txt")
+        logger.info("✅ Service relancé avec le nouveau code.")
 
     finally:
         sftp.close()
@@ -343,7 +380,10 @@ def main():
         dry_run(config, is_update=args.update)
     else:
         login, pwd = get_credentials()
-        deploy_remote(config, login, pwd, is_update=args.update)
+        if args.update:
+            update_remote(config, login, pwd)
+        else:
+            deploy_remote(config, login, pwd)
 
 
 if __name__ == "__main__":

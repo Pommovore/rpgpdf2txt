@@ -19,6 +19,7 @@ class User(Base):
     role = Column(String, default="user") # "creator", "admin", "user"
     is_validated = Column(Boolean, default=False)
     directory_name = Column(String, unique=True, nullable=True)
+    api_token = Column(String, unique=True, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class ExtractionRequest(Base):

@@ -38,11 +38,48 @@ Ce fonctionnement garantit une isolation de la donnée tout en permettant au ser
 
 ## Exemple d'utilisation de l'API avec cURL
 
-Voici un exemple de requête HTTP POST pour soumettre un document PDF à l'API d'extraction :
+Pour interagir avec l'API, vous devez d'abord obtenir un token d'authentification (JWT), puis l'utiliser pour soumettre votre PDF.
+
+### 1. Obtenir un token d'authentification
+
+L'API utilise le standard OAuth2 avec `username` (qui correspond à votre email) et `password`.
+
+```bash
+curl -X POST "https://votre-domaine.com/api/v1/auth/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=votre_email@domaine.com&password=votre_mot_de_passe"
+```
+
+Si vos identifiants sont corrects et que votre compte est validé, le serveur vous renverra une réponse JSON contenant votre token :
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR...",
+  "token_type": "bearer"
+}
+```
+
+### 2. Soumettre un document PDF à l'extraction
+
+#### Option A: Avec le token d'authentification (JWT)
+Utilisez la valeur de `access_token` obtenue à l'étape précédente dans l'en-tête `Authorization` pour lancer l'extraction :
 
 ```bash
 curl -X POST "https://votre-domaine.com/api/v1/extract" \
   -H "Authorization: Bearer VOTRE_TOKEN_JWT" \
+  -F "id_texte=mon_texte_01" \
+  -F "webhook_url=https://votre-site.com/webhook/reception" \
+  -F "ia_validate=true" \
+  -F "pdf_file=@/chemin/vers/votre_fichier.pdf"
+```
+
+#### Option B: Avec votre Token d'API personnel
+Il est possible d'utiliser un **Token d'API statique**, disponible sur votre interface Tableau de Bord une fois votre compte validé. 
+Cette méthode est plus simple car le token n'expire jamais. Utilisez l'en-tête `token` dans votre requête :
+
+```bash
+curl -X POST "https://votre-domaine.com/api/v1/extract" \
+  -H "token: VOTRE_TOKEN_API" \
   -F "id_texte=mon_texte_01" \
   -F "webhook_url=https://votre-site.com/webhook/reception" \
   -F "ia_validate=true" \

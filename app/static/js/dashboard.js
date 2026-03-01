@@ -165,7 +165,50 @@ async function loadRequests() {
     }
 }
 
+async function loadUserProfile() {
+    try {
+        const response = await fetch(`${APP_PREFIX}/api/v1/auth/me`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (response.ok) {
+            const user = await response.json();
+            const tokenInput = document.getElementById('apiTokenInput');
+            if (tokenInput) {
+                tokenInput.value = user.api_token || "Token non généré (contactez l'administrateur)";
+            }
+        }
+    } catch (err) {
+        console.error('Erreur lors du chargement du profil utilisateur:', err);
+    }
+}
+
+function copyApiToken() {
+    const tokenInput = document.getElementById('apiTokenInput');
+    if (!tokenInput || !tokenInput.value || tokenInput.value.startsWith("Token non")) return;
+
+    tokenInput.select();
+    tokenInput.setSelectionRange(0, 99999); // Pour mobiles
+    document.execCommand("copy");
+
+    // Feedback visuel
+    const btn = document.getElementById('copyTokenBtn');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check2"></i>';
+    btn.classList.add('btn-success');
+    btn.classList.remove('btn-outline-secondary');
+
+    setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-outline-secondary');
+    }, 2000);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadRequests();
+    loadUserProfile();
 });
 

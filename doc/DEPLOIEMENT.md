@@ -46,7 +46,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## 2. Configuration
 
-Toute la configuration de déploiement est centralisée dans **`config/deployment.yaml`** :
+Toute la configuration de déploiement est centralisée dans **`config/deploy.yaml`** :
 
 ```yaml
 deploy:
@@ -86,7 +86,7 @@ REMOTE_LOGIN=utilisateur REMOTE_PWD=motdepasse python deploiement.py
 ```
 
 Le script effectue automatiquement :
-1. Connexion SSH au serveur défini dans `deployment.yaml`
+1. Connexion SSH au serveur défini dans `deploy.yaml`
 2. Création du répertoire cible (`/opt/rpgpdf2txt/`)
 3. Transfert de tous les fichiers du projet (hors exclusions)
 4. Génération du fichier `.env` de production (s'il n'existe pas déjà)
@@ -94,7 +94,7 @@ Le script effectue automatiquement :
 6. Création d'un environnement virtuel et installation des dépendances (`uv venv && uv pip install -r requirements.txt`)
 
 > [!NOTE]
-> **Fichiers exclus du transfert :** `.venv/`, `.git/`, `__pycache__/`, `data/`, `.env`, `.github/`, `deploiement.py`, `*.pyc`
+> **Fichiers exclus du transfert :** `.venv/`, `.git/`, `__pycache__/`, `data/`, `.env`, `.github/`, `deploy.py`, `*.pyc`
 >
 > Le fichier `.env` n'est **jamais** écrasé lors d'un redéploiement. Les données dans `data/` sont également préservées.
 
@@ -273,7 +273,7 @@ sudo systemctl restart rpgpdf2txt
 
 ```
 config/
-├── deployment.yaml          # Configuration centrale de déploiement
+├── deploy.yaml          # Configuration centrale de déploiement
 ├── nginx_rpgpdf2txt.conf    # Configuration Nginx (reverse proxy)
 └── rpgpdf2txt.service       # Fichier de service Systemd
 ```

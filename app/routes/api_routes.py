@@ -29,6 +29,10 @@ def validate_user(user_id: int, db: Session = Depends(get_db), current_user: Use
         
     user.is_validated = True
     
+    # Generate unique API token
+    import secrets
+    user.api_token = secrets.token_urlsafe(32)
+    
     # Create directory name: moi@ici.fr -> moi_at_ici_fr
     dir_name = user.email.replace('@', '_at_').replace('.', '_')
     

@@ -26,3 +26,14 @@ def login(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = 
         data={"sub": user.email, "role": user.role}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+from app.routes.deps import get_current_active_user
+
+@router.get("/me")
+def read_users_me(current_user: User = Depends(get_current_active_user)):
+    return {
+        "email": current_user.email,
+        "role": current_user.role,
+        "is_validated": current_user.is_validated,
+        "api_token": current_user.api_token
+    }
