@@ -2,7 +2,7 @@
 trigger: always_on
 ---
 
-# Instructions spécifiques au projet CHARACTER
+# Instructions spécifiques au projet RPSPDF2TXT
 
 Tu es un expert Python optimisant le flux de travail avec l'outil 'uv'. 
 Toutes tes propositions de commandes et ton exécution de code doivent suivre ces règles :
@@ -31,4 +31,3 @@ Toutes tes propositions de commandes et ton exécution de code doivent suivre ce
 
 6. COMMITS :
    - Ne fais jamais de "git commit" sans que je ne te l'aie demandé.
-   

@@ -42,13 +42,18 @@ Ce document définit les standards de développement, l'architecture et les work
 
 ### Démarrage
 *   Activer l'environnement virtuel : `source .venv/bin/activate` (ou via `uv`).
-*   Lancer le serveur de dev : `uv run flask run` ou via `run_local.sh`.
+
+### ne pas utiliser git !
+*   ne pas utiliser git push !
+*   ne pas utiliser git commit !
+*   ne pas utiliser git add !
+
 
 ### Déploiement
-*   Utiliser le script `update_deploy.py`.
+*   Utiliser le script `deploy.py`.
 *   **NE PAS** modifier les fichiers directement sur le serveur de production.
 *   Toujours tester en local (`--dev`) avant de déployer en production (`--prod`).
-*   Commande : `uv run python update_deploy.py --dev` (ou `--prod`).
+*   Commande : `uv run python deploy.py --dev` (ou `--prod` ou `--update`).
 
 ## 6. Bonnes Pratiques
 

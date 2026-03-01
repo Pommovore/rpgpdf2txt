@@ -68,9 +68,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.error(f"Erreur de validation sur {request.method} {request.url.path}")
     logger.error(f"Détails: {exc.errors()}")
     from fastapi.responses import JSONResponse
+    from fastapi.encoders import jsonable_encoder
     return JSONResponse(
         status_code=400,
-        content={"detail": exc.errors()},
+        content={"detail": jsonable_encoder(exc.errors())},
     )
 
 @app.exception_handler(StarletteHTTPException)

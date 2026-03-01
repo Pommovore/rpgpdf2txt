@@ -59,31 +59,86 @@ import shutil
 import uuid
 
 @router.post("/extract", status_code=202)
-def extract_document(
+async def extract_document(
     background_tasks: BackgroundTasks,
     id_texte: str = Form(..., min_length=3),
     webhook_url: str = Form(...),
     ia_validate: bool = Form(False),
-    pdf_file: UploadFile = File(...),
+    pdf_file: UploadFile = File(None),
+    pdf_url: str = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """
     Démarre une nouvelle demande d'extraction de texte.
+    Supporte soit l'envoi direct de fichier (pdf_file), soit une URL (pdf_url).
     """
     logger.info(f"Requête d'extraction reçue | Utilisateur: {current_user.email} | ID Texte: {id_texte}")
     
-    if not pdf_file.filename.lower().endswith('.pdf'):
-        logger.warning(f"Fichier rejeté (non-PDF): {pdf_file.filename}")
-        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-        
-    # Sauvegarde temporaire du fichier
-    temp_filename = f"{uuid.uuid4()}_{pdf_file.filename}"
+    file_path = None
+    temp_filename = f"{uuid.uuid4()}.pdf"
     file_path = os.path.abspath(os.path.join(settings.TEMP_DIR, temp_filename))
+
+    if pdf_file:
+        if not pdf_file.filename.lower().endswith('.pdf'):
+            logger.warning(f"Fichier rejeté (non-PDF): {pdf_file.filename}")
+            raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+            
+        logger.debug(f"Sauvegarde du PDF chargé dans: {file_path}")
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(pdf_file.file, buffer)
+    elif pdf_url:
+        logger.info(f"Tentative de téléchargement du PDF depuis l'URL: {pdf_url}")
+        
+        # Gestion spécifique Google Drive
+        download_url = pdf_url
+        if "drive.google.com" in pdf_url:
+            # Conversion d'un lien 'view' ou 'open' en lien direct 'uc?export=download'
+            # Exemple: https://drive.google.com/file/d/ID/view?usp=sharing -> https://drive.google.com/uc?export=download&id=ID
+            match = re.search(r"/d/([^/]+)", pdf_url)
+            if match:
+                file_id = match.group(1)
+                download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+                logger.info(f"Lien Google Drive détecté, conversion en lien de téléchargement direct: {download_url}")
+
+        try:
+            import requests
+            response = requests.get(download_url, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            # Vérification basique du Content-Type (certaines URLs ne le fournissent pas correctement)
+            content_type = response.headers.get('Content-Type', '').lower()
+            if 'html' in content_type and "drive.google.com" in download_url:
+                # Souvent une page d'avertissement de virus de Google Drive si le fichier est gros
+                logger.warning("Google Drive a renvoyé du HTML au lieu du PDF (probable avertissement scan virus).")
+                # Tentative sans confirmer
+                # On continue quand même l'écriture pour voir
+            
+            with open(file_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            # Vérification magique (PDF signature \x25\x50\x44\x46)
+            with open(file_path, "rb") as f:
+                header = f.read(4)
+                if header != b"%PDF":
+                    os.remove(file_path)
+                    logger.error(f"Le fichier téléchargé n'est pas un PDF valide ou contient du HTML d'erreur. Header: {header}")
+                    raise HTTPException(status_code=400, detail="The URL did not point to a valid PDF file (maybe a private Google Drive link?)")
+                    
+            logger.info(f"Téléchargement réussi: {file_path}")
+            
+        except Exception as e:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            logger.error(f"Erreur lors du téléchargement: {e}")
+            detail = "Failed to download PDF from the provided URL"
+            if isinstance(e, HTTPException):
+                raise e
+            raise HTTPException(status_code=400, detail=detail)
+    else:
+        raise HTTPException(status_code=400, detail="Missing pdf_file or pdf_url")
     
-    logger.debug(f"Sauvegarde du PDF temporaire dans: {file_path}")
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(pdf_file.file, buffer)
         
     # Find existing job or create new one
     req = db.query(ExtractionRequest).filter(ExtractionRequest.id_texte == id_texte).first()
