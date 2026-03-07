@@ -15,6 +15,10 @@ templates = Jinja2Templates(directory="app/templates")
 # Préfixe pour les templates (liens href, src, etc.)
 _prefix = settings.APP_PREFIX
 
+# Variables globales disponibles dans tous les templates
+templates.env.globals["app_version"] = settings.APP_VERSION
+templates.env.globals["github_url"] = settings.GITHUB_URL
+
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db: Session = Depends(get_db)):
     config = db.query(SystemConfig).first()
@@ -45,6 +49,24 @@ async def history_page(request: Request):
 @router.get("/preferences", response_class=HTMLResponse)
 async def preferences_page(request: Request):
     return templates.TemplateResponse("preferences.html", {"request": request, "app_prefix": _prefix})
+
+@router.get("/cache", response_class=HTMLResponse)
+async def cache_page(request: Request, db: Session = Depends(get_db)):
+    from app.db.models import ExtractionRequest
+    # Récupérer les extraits uniques par file_hash (status success)
+    # L'utilisation de group_by pour éviter les doublons sur SQLite (comportement spécifique de SQLite)
+    cached_requests = db.query(ExtractionRequest).filter(
+        ExtractionRequest.status == "success",
+        ExtractionRequest.file_hash.isnot(None),
+        ExtractionRequest.txt_file_path.isnot(None)
+    ).group_by(ExtractionRequest.file_hash).order_by(ExtractionRequest.completed_at.desc()).all()
+    
+    return templates.TemplateResponse("cache.html", {
+        "request": request, 
+        "app_prefix": _prefix, 
+        "cached_requests": cached_requests,
+        "settings_API_V1_STR": settings.API_V1_STR
+    })
 
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):

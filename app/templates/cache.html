@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2 class="mb-4"><i class="bi bi-hdd-network"></i> Cache Global des Extractions</h2>
+        <p class="lead">Le système conserve une empreinte des fichiers précédemment extraits avec succès. Soumettre le
+            même PDF renverra instantanément la version en cache.</p>
+
+        <div class="card bg-dark text-white shadow">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>ID Texte Original</th>
+                                <th>Date d'extraction</th>
+                                <th>Empreinte SHA-256</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in cached_requests %}
+                            <tr>
+                                <td>{{ req.id }}</td>
+                                <td><span class="badge bg-secondary">{{ req.id_texte }}</span></td>
+                                <td>{{ req.completed_at.strftime('%Y-%m-%d %H:%M:%S') if req.completed_at else
+                                    'Inconnue' }}</td>
+                                <td>
+                                    <!-- Tooltip pour afficher le hash complet -->
+                                    <span class="text-truncate d-inline-block" style="max-width: 150px; cursor: help;"
+                                        data-bs-toggle="tooltip" data-bs-placement="top" title="{{ req.file_hash }}">
+                                        {{ req.file_hash[:10] }}...
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="{{ app_prefix }}{{ settings_API_V1_STR|default('/api/v1') }}/extract/{{ req.id }}/download"
+                                        class="btn btn-sm btn-outline-info" target="_blank" rel="noopener noreferrer">
+                                        <i class="bi bi-download"></i> Résultat
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    <i class="bi bi-box-seam me-2"></i> Le cache est actuellement vide.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Initialisation des tooltips Bootstrap
+    document.addEventListener('DOMContentLoaded', function () {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
+    });
+</script>
+{% endblock %}

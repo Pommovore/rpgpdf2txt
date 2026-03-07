@@ -30,7 +30,8 @@ class ExtractionRequest(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String, default="pending") # pending, processing, success, error
     webhook_url = Column(String, nullable=False)
-    file_path = Column(String, nullable=True) # the original uploaded pdf location
+    file_path = Column(String, nullable=True) # l'emplacement du fichier pdf uploadé
+    file_hash = Column(String, index=True, nullable=True) # Empreinte SHA-256 pour le cache
     txt_file_path = Column(String, nullable=True) # the final output text
     ia_validate = Column(Boolean, default=False)
     error_message = Column(Text, nullable=True)

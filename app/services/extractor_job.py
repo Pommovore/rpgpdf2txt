@@ -10,6 +10,7 @@ from app.services.webhook import send_client_webhook
 from app.core.config import settings
 from app.core.security import create_access_token
 from datetime import timedelta
+import hashlib
 
 async def process_extraction(request_id: int):
     # This runs in background
@@ -22,7 +23,56 @@ async def process_extraction(request_id: int):
             
         logger.info(f"Début du traitement de la demande {request_id} (ID Texte: {req.id_texte})")
         req.status = "processing"
-        db.commit()
+        
+        # 0. Calcul du hash et vérification du cache
+        logger.info(f"Étape 0/4 : Calcul de l'empreinte du fichier '{req.file_path}'")
+        sha256_hash = hashlib.sha256()
+        with open(req.file_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        file_hash = sha256_hash.hexdigest()
+        req.file_hash = file_hash
+        
+        cached_req = db.query(ExtractionRequest).filter(
+            ExtractionRequest.file_hash == file_hash,
+            ExtractionRequest.status == "success",
+            ExtractionRequest.txt_file_path.isnot(None),
+            ExtractionRequest.id != request_id
+        ).first()
+
+        if cached_req and os.path.exists(cached_req.txt_file_path):
+            logger.info(f"Cache hit! Réutilisation de l'extraction de la demande {cached_req.id} (Hash: {file_hash})")
+            req.txt_file_path = cached_req.txt_file_path
+            req.status = "success"
+            req.completed_at = datetime.utcnow()
+            db.commit()
+            
+            with open(req.txt_file_path, "r", encoding="utf-8") as f:
+                corrected_text = f.read()
+            
+            # Aller directement à l'étape 4 (Webhook)
+            logger.info(f"Étape 4/4 : Envoi de la notification au webhook : {req.webhook_url}")
+            excerpt = corrected_text[:500]
+            if len(corrected_text) > 500:
+                excerpt += "..."
+                
+            download_token = create_access_token(
+                data={"sub": str(req.id), "type": "download"}, 
+                expires_delta=timedelta(days=365)
+            )
+            download_url = f"{settings.EXTERNAL_URL}{settings.API_V1_STR}/extract/{req.id}/download?token={download_token}"
+
+            await send_client_webhook(req.webhook_url, {
+                "message": "L'extraction est terminée (depuis le cache).",
+                "etat": "succès",
+                "id_texte": req.id_texte,
+                "url": download_url,
+                "extrait": excerpt
+            })
+            return
+        else:
+            logger.info("Miss du cache, poursuite avec l'extraction standard.")
+            db.commit()
         
         # 1. Extraction du texte
         logger.info(f"Étape 1/4 : Extraction du texte depuis le PDF '{req.file_path}'")

@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional
 import os
+import subprocess
 
 def load_deploy_config() -> dict:
     """Charge la configuration de déploiement depuis config/deployment.yaml."""
@@ -54,8 +55,35 @@ class Settings(BaseSettings):
     
     # Storage
     DATA_DIR: str = "./data"
+    DATA_DIR: str = "./data"
     USERS_DIR: str = "./data/users"
     TEMP_DIR: str = "./data/temp"
+
+    # Propriétés dynamiques pour récupérer les informations Git
+    @property
+    def APP_VERSION(self) -> str:
+        """Récupère la version de l'application basée sur la date du dernier commit."""
+        try:
+            cmd = ["git", "log", "-1", "--format=%cd", "--date=format:%Y%m%d_%H%M%S"]
+            out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True, cwd=os.path.dirname(__file__)).strip()
+            return f"rpgpf2txt_{out}"
+        except Exception:
+            return "rpgpf2txt_inconnue"
+
+    @property
+    def GITHUB_URL(self) -> str:
+        """Récupère l'URL du dépôt GitHub depuis la configuration Git locale."""
+        try:
+            cmd = ["git", "config", "--get", "remote.origin.url"]
+            out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True, cwd=os.path.dirname(__file__)).strip()
+            # Transformation des URLs SSH en URLs HTTPS
+            if out.startswith("git@"):
+                out = out.replace(":", "/").replace("git@", "https://")
+            if out.endswith(".git"):
+                out = out[:-4]
+            return out
+        except Exception:
+            return "#"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

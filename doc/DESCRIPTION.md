@@ -86,6 +86,42 @@ curl -X POST "https://votre-domaine.com/api/v1/extract" \
   -F "pdf_file=@/chemin/vers/votre_fichier.pdf"
 ```
 
+### Réponse du serveur (HTTP 202 Accepted)
+
+Si la requête est valide, le serveur accepte la demande et retourne un identifiant unique pour suivre l'extraction :
+
+```json
+{
+  "msg": "Extraction started",
+  "request_id": 42
+}
+```
+
+### Notification via Webhook (POST)
+
+Une fois l'extraction terminée (ou en cas d'échec), le serveur enverra une requête POST à l'URL de `webhook_url` spécifiée :
+
+**En cas de succès :**
+```json
+{
+  "message": "L'extraction est terminée.",
+  "etat": "succès",
+  "id_texte": "mon_texte_01",
+  "url": "https://votre-domaine.com/api/v1/extract/42/download?token=...",
+  "extrait": "Les 500 premiers caractères du texte extrait..."
+}
+```
+
+**En cas d'échec :**
+```json
+{
+  "message": "L'extraction a échoué.",
+  "etat": "échec",
+  "id_texte": "mon_texte_01",
+  "erreur": "Description de l'erreur survenue"
+}
+```
+
 ### Paramètres de la requête :
 - **Authorization** : Token JWT de l'utilisateur (nécessite une authentification par le Header).
 - **id_texte** : Un identifiant unique pour votre document (minimum 3 caractères).
