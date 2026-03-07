@@ -290,7 +290,7 @@ def get_user_requests(db: Session = Depends(get_db), current_user: User = Depend
     return result
 
 @router.delete("/admin/cache")
-def clear_cache(db: Session = Depends(get_db), current_user: User = Depends(check_is_admin)):
+def clear_cache(db: Session = Depends(get_db), current_user: User = Depends(get_current_admin_user)):
     """Vide le cache (toutes les extractions réussies) et supprime les fichiers .txt associés."""
     logger.info(f"Admin {current_user.email} demande la purge du cache.")
     
@@ -316,7 +316,7 @@ def clear_cache(db: Session = Depends(get_db), current_user: User = Depends(chec
     return {"message": "Cache vidé avec succès", "deleted_count": count}
 
 @router.delete("/admin/queue")
-async def clear_queue(db: Session = Depends(get_db), current_user: User = Depends(check_is_admin)):
+async def clear_queue(db: Session = Depends(get_db), current_user: User = Depends(get_current_admin_user)):
     """Vide la file d'attente et passe les traitements en erreur/maintenance."""
     logger.info(f"Admin {current_user.email} demande la purge de la file d'attente.")
     
