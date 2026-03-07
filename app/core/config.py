@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 from typing import Optional
 import os
 import subprocess
@@ -55,7 +55,6 @@ class Settings(BaseSettings):
     
     # Storage
     DATA_DIR: str = "./data"
-    DATA_DIR: str = "./data"
     USERS_DIR: str = "./data/users"
     TEMP_DIR: str = "./data/temp"
 
@@ -66,9 +65,9 @@ class Settings(BaseSettings):
         try:
             cmd = ["git", "log", "-1", "--format=%cd", "--date=format:%Y%m%d_%H%M%S"]
             out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True, cwd=os.path.dirname(__file__)).strip()
-            return f"rpgpf2txt_{out}"
+            return f"rpgpdf2txt_{out}"
         except Exception:
-            return "rpgpf2txt_inconnue"
+            return "rpgpdf2txt_inconnue"
 
     @property
     def GITHUB_URL(self) -> str:
@@ -86,6 +85,14 @@ class Settings(BaseSettings):
             return "#"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @model_validator(mode='after')
+    def validate_security(self) -> 'Settings':
+        machine = _deploy_config.get("machine_name", "localhost")
+        if machine != "localhost":
+            if self.SECRET_KEY == "CHANGE_ME_IN_PRODUCTION_A_VERY_LONG_SECRET_KEY":
+                raise ValueError("CRITICAL: Default SECRET_KEY detected in production deploying config. Please create a .env file with a secure SECRET_KEY.")
+        return self
 
 settings = Settings()
 

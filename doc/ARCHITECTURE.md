@@ -16,7 +16,7 @@ Ce document détaille l'architecture sous-jacente de RPGPDF2Text, ainsi que les 
 | Authentification | JWT (python-jose) + bcrypt | `app/core/security.py`, `app/routes/deps.py` |
 | Logging | Loguru → stdout + `data/logs/app.log` | `app/main.py` |
 | Webhooks | httpx (async) | `app/services/webhook.py` |
-| Déploiement | paramiko (SSH/SFTP) | `deploiement.py` |
+| Déploiement | paramiko (SSH/SFTP) | `deploy.py` |
 
 ## Architecture Applicative
 
@@ -131,7 +131,7 @@ Voir le guide complet : **[doc/DEPLOIEMENT.md](DEPLOIEMENT.md)**
 ### Résumé rapide
 
 1. **Développement local** : `bash run_local.sh` → `http://localhost:8000`
-2. **Production** : `python deploiement.py` → déploiement SSH automatique
+2. **Production** : `python deploy.py` → déploiement SSH automatique
 
 ### Variables d'Environnement (`.env`)
 

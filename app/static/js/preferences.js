@@ -34,7 +34,9 @@ function copyApiToken() {
 
     tokenInput.select();
     tokenInput.setSelectionRange(0, 99999);
-    document.execCommand("copy");
+    navigator.clipboard.writeText(tokenInput.value).catch(err => {
+        console.error("Erreur copie", err);
+    });
 
     const btn = document.getElementById('copyTokenBtn');
     const originalHtml = btn.innerHTML;

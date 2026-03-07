@@ -9,6 +9,17 @@ from app.services.webhook import send_discord_notification
 from app.core.config import settings
 import os
 
+def _is_admin(request: Request) -> bool:
+    token = request.cookies.get("access_token")
+    if not token:
+        return False
+    from jose import jwt, JWTError
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload.get("role") in ["admin", "creator"]
+    except JWTError:
+        return False
+
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
@@ -32,6 +43,8 @@ async def login_page(request: Request):
 
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
+    if not _is_admin(request):
+        return RedirectResponse(url=f"{_prefix}/login", status_code=302)
     return templates.TemplateResponse("admin.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -52,6 +65,9 @@ async def preferences_page(request: Request):
 
 @router.get("/cache", response_class=HTMLResponse)
 async def cache_page(request: Request, db: Session = Depends(get_db)):
+    if not _is_admin(request):
+        return RedirectResponse(url=f"{_prefix}/login", status_code=302)
+        
     from app.db.models import ExtractionRequest
     # Récupérer les extraits uniques par file_hash (status success)
     # L'utilisation de group_by pour éviter les doublons sur SQLite (comportement spécifique de SQLite)
@@ -79,6 +95,9 @@ async def register_user(
     password: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    if len(password) < 8:
+         return templates.TemplateResponse("register.html", {"request": request, "app_prefix": _prefix, "error": "Le mot de passe doit faire au moins 8 caractères."})
+
     if db.query(User).filter(User.email == email).first():
          return templates.TemplateResponse("register.html", {"request": request, "app_prefix": _prefix, "error": "Email already registered"})
          
@@ -107,6 +126,9 @@ async def setup_creator(
     admin_password: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    if len(admin_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+
     config = db.query(SystemConfig).first()
     if config and config.is_configured:
         raise HTTPException(status_code=400, detail="System already configured")

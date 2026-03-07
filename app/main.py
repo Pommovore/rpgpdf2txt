@@ -36,7 +36,16 @@ from app.routes import auth_routes, view_routes, api_routes
 # Préfixe de l'application (ex: "/rpgpdf2txt" en prod, "" en local)
 _prefix = settings.APP_PREFIX
 
-app = FastAPI(title=settings.PROJECT_NAME)
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    prefix_info = f" avec préfixe '{settings.APP_PREFIX}'" if settings.APP_PREFIX else " (sans préfixe)"
+    logger.info(f"Démarrage de l'API{prefix_info}...")
+    create_directories()
+    yield
+
+app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
 # Fichiers statiques et routes montés sous le préfixe
 # En local (_prefix=""), les routes sont à la racine (/login, /api/v1/...)
@@ -87,14 +96,6 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         status_code=exc.status_code,
         content={"detail": exc.detail},
     )
-
-
-# Vérification des répertoires de sortie au démarrage
-@app.on_event("startup")
-async def startup_event():
-    prefix_info = f" avec préfixe '{settings.APP_PREFIX}'" if settings.APP_PREFIX else " (sans préfixe)"
-    logger.info(f"Démarrage de l'API{prefix_info}...")
-    create_directories()
 
 
 # Route principale gérée par view_routes.py

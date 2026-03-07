@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from loguru import logger
 from sqlalchemy.orm import Session
 from app.db.database import engine, SessionLocal
@@ -48,7 +48,7 @@ async def process_extraction(request_id: int):
             logger.info(f"Cache hit! Réutilisation de l'extraction de la demande {cached_req.id} (Hash: {file_hash})")
             req.txt_file_path = cached_req.txt_file_path
             req.status = "success_cached"
-            req.completed_at = datetime.utcnow()
+            req.completed_at = datetime.now(timezone.utc)
             db.commit()
             
             with open(req.txt_file_path, "r", encoding="utf-8") as f:
@@ -118,7 +118,7 @@ async def process_extraction(request_id: int):
                 # 3. Sauvegarde du résultat
                 logger.info("Étape 3/4 : Sauvegarde du fichier texte résultat...")
                 user = db.query(User).filter(User.id == req.user_id).first()
-                timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
                 
                 txt_filename = f"{timestamp}_{req.id_texte}.txt"
                 if is_truncated:
@@ -132,7 +132,7 @@ async def process_extraction(request_id: int):
                     
                 req.txt_file_path = txt_path
                 req.status = "success"
-                req.completed_at = datetime.utcnow()
+                req.completed_at = datetime.now(timezone.utc)
                 db.commit()
                 logger.info(f"Fichier sauvegardé avec succès dans: {txt_path}")
                 
@@ -163,7 +163,7 @@ async def process_extraction(request_id: int):
         if req:
             req.status = "error"
             req.error_message = str(e)
-            req.completed_at = datetime.utcnow()
+            req.completed_at = datetime.now(timezone.utc)
             db.commit()
             await send_client_webhook(req.webhook_url, {
                 "message": "L'extraction a échoué.",

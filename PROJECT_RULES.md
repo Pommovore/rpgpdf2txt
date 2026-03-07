@@ -5,7 +5,7 @@ Ce document définit les standards de développement, l'architecture et les work
 ## 1. Technologies Principales
 
 *   **Backend** : Python 3.12+ avec FastAPI.
-*   **Base de données** : SQLite (Dev/Test/Prod) via SQLAlchemy.
+*   **Base de Données** : SQLite (Dev/Test/Prod) via SQLAlchemy. Migrations gérées manuellement dans `deploy.py`.
 *   **Frontend** : HTML5, CSS3, JavaScript (Vanilla), Bootstrap 5.3.
 *   **Gestionnaire de dépendances** : `uv`.
 
@@ -33,9 +33,8 @@ Ce document définit les standards de développement, l'architecture et les work
 
 ## 4. Base de Données
 
-*   **Migrations** : Utiliser **Flask-Migrate** (`alembic`).
-    *   Toute modification de schéma DOIT passer par une migration.
-    *   Commandes : `flask db migrate -m "Description"` puis `flask db upgrade`.
+*   **Migrations** : Utiliser les scripts d'auto-migration dans `deploy.py` ou des scripts SQLAlchemy manuels. (Pas d'Alembic actuellement).
+    *   Toute modification de schéma DOIT être répercutée dans `models.py` et le script de déploiement si nécessaire.
 *   **Contraintes** : Définir explicitement les Foreign Keys et Index.
 
 ## 5. Workflow de Développement
@@ -58,7 +57,7 @@ Ce document définit les standards de développement, l'architecture et les work
 ## 6. Bonnes Pratiques
 
 *   **Sécurité** :
-    *   Utiliser les décorateurs `@login_required` et `@admin_required`.
-    *   Protéger les formulaires avec CSRF (`form.hidden_tag()` ou `csrf_token`).
+    *   Utiliser les dépendances FastAPI (`Depends(get_current_user)`, `Depends(get_current_admin_user)`).
+    *   Protéger les endpoints d'administration par vérification de rôle (JWT token métier ou cookies).
 *   **Logs** : Utiliser `ActivityLog` pour tracer les actions importantes (création, modification, suppression).
 *   **Code Propre** : Supprimer le code mort et les `print` de debug avant de commiter.

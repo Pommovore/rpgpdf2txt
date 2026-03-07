@@ -39,7 +39,8 @@ def extract_text_from_pdf(pdf_path: str) -> str:
             # If 'fra' fails due to missing language pack, it will default to English or fail.
             try:
                 page_text = pytesseract.image_to_string(img, lang="fra")
-            except:
+            except Exception as e:
+                logger.warning(f"French OCR failed, falling back to default: {e}")
                 page_text = pytesseract.image_to_string(img) # fallback default
                 
             ocr_text += page_text + "\n"

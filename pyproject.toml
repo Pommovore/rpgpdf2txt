@@ -5,8 +5,23 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "bcrypt",
+    "fastapi",
+    "httpx",
+    "huggingface_hub",
+    "jinja2",
     "loguru>=0.7.3",
     "paramiko>=4.0.0",
+    "pdf2image",
+    "Pillow",
+    "pydantic",
+    "pydantic-settings",
+    "PyMuPDF",
+    "python-jose[cryptography]",
+    "python-multipart",
+    "pytesseract",
     "pyyaml>=6.0.3",
     "requests>=2.32.5",
+    "sqlalchemy",
+    "uvicorn[standard]"
 ]

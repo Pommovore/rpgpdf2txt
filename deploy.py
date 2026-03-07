@@ -142,7 +142,7 @@ def deploy_local():
     """Effectue un déploiement local (mode --dev)."""
     logger.info("Démarrage du processus de préparation pour l'environnement: Développement Local")
     logger.info("Mise à jour des dépendances avec uv...")
-    ret = os.system("uv pip install -r requirements.txt")
+    ret = os.system("uv sync")
     if ret == 0:
         logger.info("✅ Déploiement local terminé avec succès.")
         logger.info("🚀 Lancement du serveur local de développement...")
@@ -185,7 +185,7 @@ def _setup_ssh(config: dict, login: str, pwd: str):
     def run_sudo(cmd: str):
         """Exécute une commande en sudo proprement via la connexion SSH active."""
         if pwd:
-            _ssh_exec(ssh, f"echo '{pwd}' | sudo -S {cmd}", show_output=True)
+            _ssh_exec(ssh, f"sudo -S {cmd}", show_output=True, sudo_pwd=pwd)
         else:
             _ssh_exec(ssh, f"sudo {cmd}", show_output=True)
             
@@ -312,7 +312,7 @@ def deploy_remote(config: dict, login: str, pwd: str):
 
         # Installer les dépendances sur le serveur
         logger.info("📦 Mise à jour des dépendances sur le serveur...")
-        _ssh_exec(ssh, f"cd {target_dir} && export PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin && uv venv && uv pip install -r requirements.txt", show_output=True)
+        _ssh_exec(ssh, f"cd {target_dir} && export PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin && uv sync", show_output=True)
 
         logger.info("⚙️  Application des configurations globales (Nginx/Systemd)...")
         # Config Nginx
@@ -358,7 +358,7 @@ def update_remote(config: dict, login: str, pwd: str):
             
         # Installer les dépendances sur le serveur
         logger.info("📦 Vérification des dépendances sur le serveur...")
-        _ssh_exec(ssh, f"cd {target_dir} && export PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin && uv venv && uv pip install -r requirements.txt", show_output=True)
+        _ssh_exec(ssh, f"cd {target_dir} && export PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin && uv sync", show_output=True)
 
         # Exécuter les migrations DB
         _run_db_migrations(ssh, target_dir)
@@ -398,14 +398,18 @@ def dry_run(config: dict, is_update: bool):
     logger.info("🔍 Mode --dry-run : aucun transfert ni action n'ont été effectués.")
 
 
-def _ssh_exec(ssh, command: str, show_output: bool = False):
+def _ssh_exec(ssh, command: str, show_output: bool = False, sudo_pwd: str = None):
     """Exécute une commande SSH et log le résultat."""
-    stdin, stdout, stderr = ssh.exec_command(command)
+    stdin, stdout, stderr = ssh.exec_command(command, get_pty=bool(sudo_pwd))
+    if sudo_pwd:
+        stdin.write(sudo_pwd + "\n")
+        stdin.flush()
     exit_code = stdout.channel.recv_exit_status()
     if show_output:
         output = stdout.read().decode().strip()
         if output:
             for line in output.split("\n"):
+                if sudo_pwd and line.strip() == "[sudo] password for": continue
                 logger.info(f"  [remote] {line}")
     err = stderr.read().decode().strip()
     if exit_code != 0 and err:

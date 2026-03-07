@@ -10,4 +10,7 @@ wheels/
 .venv
 data/
 tokens/
-run_request.sh
+
+# Sensitive / Editor files
+.env
+*.kate-swp

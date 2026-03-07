@@ -3,6 +3,7 @@ from loguru import logger
 
 from typing import Tuple
 import re
+import asyncio
 
 # Motifs de préambule courants que le LLM ajoute malgré les instructions
 _PREAMBLE_PATTERNS = [
@@ -76,9 +77,9 @@ Texte à nettoyer (partie {i+1}/{len(chunks)}) :
             messages = [{"role": "user", "content": prompt}]
             
             try:
-                # Synchronous call; in an async heavy-load server, this might block. 
-                # For an internal/admin script, it is fine to run sequentially.
-                response = client.chat_completion(
+                # Run synchronous HF client in a separate thread
+                response = await asyncio.to_thread(
+                    client.chat_completion,
                     model="meta-llama/Llama-3.1-8B-Instruct", 
                     messages=messages, 
                     max_tokens=1500, 

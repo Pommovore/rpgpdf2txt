@@ -63,7 +63,7 @@ deploy:
 
 ## 3. Déploiement Automatique
 
-Le script `deploiement.py` automatise le transfert de l'application vers le serveur distant via SSH.
+Le script `deploy.py` automatise le transfert de l'application vers le serveur distant via SSH.
 
 ### Dépendance locale
 
@@ -76,13 +76,13 @@ uv pip install paramiko
 Sans identifiants, pour voir les fichiers qui seraient transférés :
 
 ```bash
-python deploiement.py --dry-run
+python deploy.py --dry-run
 ```
 
 ### Déploiement réel
 
 ```bash
-REMOTE_LOGIN=utilisateur REMOTE_PWD=motdepasse python deploiement.py
+REMOTE_LOGIN=utilisateur REMOTE_PWD=motdepasse python deploy.py
 ```
 
 Le script effectue automatiquement :
@@ -91,7 +91,7 @@ Le script effectue automatiquement :
 3. Transfert de tous les fichiers du projet (hors exclusions)
 4. Génération du fichier `.env` de production (s'il n'existe pas déjà)
 5. Création des répertoires de données (`data/db`, `data/logs`, `data/users`, `data/temp`)
-6. Création d'un environnement virtuel et installation des dépendances (`uv venv && uv pip install -r requirements.txt`)
+6. Création d'un environnement virtuel et installation des dépendances (`uv sync`)
 
 > [!NOTE]
 > **Fichiers exclus du transfert :** `.venv/`, `.git/`, `__pycache__/`, `data/`, `.env`, `.github/`, `deploy.py`, `*.pyc`
@@ -104,7 +104,7 @@ Le script effectue automatiquement :
 
 ### 4.1 Fichier `.env` de Production
 
-Le script `deploiement.py` génère un `.env` sur le serveur. **Vous devez modifier `SECRET_KEY`** :
+Le script `deploy.py` génère un `.env` sur le serveur. **Vous devez modifier `SECRET_KEY`** :
 
 ```bash
 sudo nano /opt/rpgpdf2txt/.env
@@ -243,7 +243,7 @@ Pour mettre à jour l'application après des modifications :
 
 ```bash
 # Depuis la machine de développement
-REMOTE_LOGIN=utilisateur REMOTE_PWD=motdepasse python deploiement.py
+REMOTE_LOGIN=utilisateur REMOTE_PWD=motdepasse python deploy.py
 
 # Sur le serveur, copier les fichiers de config si modifiés
 sudo cp /opt/rpgpdf2txt/config/rpgpdf2txt.service /etc/systemd/system/
@@ -262,7 +262,7 @@ sudo systemctl restart rpgpdf2txt
 | Symptôme | Cause | Solution |
 |---|---|---|
 | `Permission denied` au démarrage | `ProtectHome=true` empêche l'accès aux binaires `uv` | Mettre `ProtectHome=read-only` |
-| `No module named uvicorn` | Dépendances non installées dans le venv | `cd /opt/rpgpdf2txt && uv pip install -r requirements.txt` |
+| `No module named uvicorn` | Dépendances non installées dans le venv | `cd /opt/rpgpdf2txt && uv sync` |
 | `400 Bad Request` sur `/extract` | `/tmp` non accessible (ProtectSystem=strict) | Ajouter `PrivateTmp=true` au service systemd |
 | `uv: command not found` (SSH) | `~/.local/bin` pas dans le PATH non-interactif | `export PATH=$PATH:$HOME/.local/bin` avant d'appeler `uv` |
 | Double préfixe dans les URLs | `root_path` défini à la fois dans FastAPI et `--root-path` | Ne **pas** utiliser `--root-path`, le préfixe est géré par le montage des routes |

@@ -14,7 +14,7 @@ import shutil
 import aiofiles
 import uuid
 from loguru import logger
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 
 router = APIRouter()
@@ -58,10 +58,6 @@ def validate_user(user_id: int, db: Session = Depends(get_db), current_user: Use
     
     return {"msg": "User validated and directory created", "directory": dir_name}
 
-from fastapi import BackgroundTasks, UploadFile, File, Form
-from app.services.extractor_job import process_extraction
-import shutil
-import uuid
 
 @router.post("/extract", status_code=202)
 async def extract_document(
@@ -210,7 +206,6 @@ async def extract_document(
     return {"msg": "Extraction started", "request_id": req.id}
 
 from fastapi.responses import FileResponse
-# Les imports FastAPI et jose ont été déplacés en haut du fichier
 
 @router.get("/extract/{request_id}/download")
 def download_text(
@@ -331,7 +326,7 @@ async def clear_queue(db: Session = Depends(get_db), current_user: User = Depend
     for req in active_requests:
         req.status = "error"
         req.error_message = "Traitement interrompu par le serveur pour cause de maintenance"
-        req.completed_at = datetime.utcnow()
+        req.completed_at = datetime.now(timezone.utc)
         count += 1
         
         # Envoi de la notification webhook d'erreur pour prévenir le client

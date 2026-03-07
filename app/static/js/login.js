@@ -20,6 +20,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             errorDiv.classList.remove('d-none');
         } else {
             localStorage.setItem('access_token', data.access_token);
+            document.cookie = `access_token=${data.access_token}; path=/; max-age=604800; samesite=Lax`;
             window.location.href = `${APP_PREFIX}/dashboard`;
         }
     } catch (err) {
