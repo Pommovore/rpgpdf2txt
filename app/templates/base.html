@@ -84,15 +84,15 @@
             <a class="nav-link" href="${appPrefix}/extraction"><i class="bi bi-plus-circle me-1"></i>Nouvelle Extraction</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="${appPrefix}/cache"><i class="bi bi-hdd-network me-1"></i>Cache Global</a>
-          </li>
-          <li class="nav-item">
             <a class="nav-link" href="${appPrefix}/preferences"><i class="bi bi-gear me-1"></i>Préférences</a>
           </li>
         `;
 
         if (isAdmin) {
           navHtml += `
+            <li class="nav-item">
+              <a class="nav-link" href="${appPrefix}/cache"><i class="bi bi-hdd-network me-1"></i>Cache Global</a>
+            </li>
             <li class="nav-item">
               <a class="nav-link" href="${appPrefix}/admin"><i class="bi bi-shield-lock me-1"></i>Admin</a>
             </li>

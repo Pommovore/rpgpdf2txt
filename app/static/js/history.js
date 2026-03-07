@@ -50,23 +50,44 @@ async function loadRequests() {
 
         const hasActiveJobs = requests.some(r => r.status === 'pending' || r.status === 'processing');
 
-        requests.forEach(req => {
+        requests.forEach((req, index) => {
             const tr = document.createElement('tr');
             let statusBadge = '';
             let actionBtn = '';
+            let idColumnHtml = req.id; // Par défaut, on affiche juste l'ID métier
 
             switch (req.status) {
                 case 'success':
                     statusBadge = '<span class="badge bg-success">Terminé</span>';
-                    actionBtn = `<a href="${APP_PREFIX}/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-success">Télécharger .txt</a>`;
+                    actionBtn = `<a href="${APP_PREFIX}/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-success"><i class="bi bi-download"></i> .txt</a>`;
+                    break;
+                case 'success_cached':
+                    statusBadge = '<span class="badge bg-secondary">Caché</span>';
+                    actionBtn = `<a href="${APP_PREFIX}/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i> .txt</a>`;
+                    if (req.file_hash) {
+                        idColumnHtml = `
+                            <span class="badge border border-secondary text-secondary" style="cursor: help;"
+                                  data-bs-toggle="tooltip" 
+                                  data-bs-placement="top" 
+                                  title="${req.file_hash}">
+                                <i class="bi bi-hdd-network"></i> Caché
+                            </span>
+                         `;
+                    }
                     break;
                 case 'pending':
                     statusBadge = '<span class="badge bg-warning text-dark">En attente</span>';
-                    actionBtn = `<span class="text-muted small">Dans la file d\'attente</span>`;
+                    actionBtn = `<span class="text-muted small">En attente</span>`;
+                    if (req.queue_position !== undefined && req.queue_position !== null) {
+                        idColumnHtml = `<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split"></i> Attente : ${req.queue_position + 1}</span>`;
+                    }
                     break;
                 case 'processing':
                     statusBadge = '<span class="badge bg-info text-dark"><span class="spinner-border spinner-border-sm me-1"></span>En cours</span>';
                     actionBtn = `<span class="text-muted small">Extraction...</span>`;
+                    if (req.queue_position !== undefined && req.queue_position !== null) {
+                        idColumnHtml = `<span class="badge bg-info text-dark"><i class="bi bi-gear-wide-connected"></i> En cours (0)</span>`;
+                    }
                     break;
                 case 'error':
                     statusBadge = '<span class="badge bg-danger">Erreur</span>';
@@ -77,13 +98,19 @@ async function loadRequests() {
             const date = req.created_at ? new Date(req.created_at).toLocaleString() : '-';
 
             tr.innerHTML = `
-                <td>${req.id}</td>
+                <td>${idColumnHtml}</td>
                 <td><strong>${req.id_texte}</strong></td>
                 <td>${statusBadge}</td>
                 <td class="small text-muted">${date}</td>
                 <td>${actionBtn}</td>
             `;
             tbody.appendChild(tr);
+        });
+
+        // Initialisation des tooltips fraîchement ajoutés au DOM
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('#requestsTableBody [data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
         });
 
         if (hasActiveJobs && !pollingInterval) {

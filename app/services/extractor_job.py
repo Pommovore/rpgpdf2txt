@@ -11,6 +11,10 @@ from app.core.config import settings
 from app.core.security import create_access_token
 from datetime import timedelta
 import hashlib
+import asyncio
+
+# Verrou global pour n'autoriser qu'une seule extraction PDF (OCR/IA) à la fois
+extraction_lock = asyncio.Lock()
 
 async def process_extraction(request_id: int):
     # This runs in background
@@ -35,7 +39,7 @@ async def process_extraction(request_id: int):
         
         cached_req = db.query(ExtractionRequest).filter(
             ExtractionRequest.file_hash == file_hash,
-            ExtractionRequest.status == "success",
+            ExtractionRequest.status.in_(["success", "success_cached"]),
             ExtractionRequest.txt_file_path.isnot(None),
             ExtractionRequest.id != request_id
         ).first()
@@ -43,7 +47,7 @@ async def process_extraction(request_id: int):
         if cached_req and os.path.exists(cached_req.txt_file_path):
             logger.info(f"Cache hit! Réutilisation de l'extraction de la demande {cached_req.id} (Hash: {file_hash})")
             req.txt_file_path = cached_req.txt_file_path
-            req.status = "success"
+            req.status = "success_cached"
             req.completed_at = datetime.utcnow()
             db.commit()
             
@@ -71,73 +75,87 @@ async def process_extraction(request_id: int):
             })
             return
         else:
-            logger.info("Miss du cache, poursuite avec l'extraction standard.")
+            logger.info("Miss du cache, attente de disponibilité dans la file (1 extraction à la fois)...")
             db.commit()
-        
-        # 1. Extraction du texte
-        logger.info(f"Étape 1/4 : Extraction du texte depuis le PDF '{req.file_path}'")
-        raw_text = extract_text_from_pdf(req.file_path)
-        logger.info(f"Extraction terminée. Longueur brute : {len(raw_text)} caractères.")
-        
-        # 2. Correction IA (si demandée)
-        config = db.query(SystemConfig).first()
-        hf_token = config.hf_token if config else None
-        
-        corrected_text = raw_text
-        is_truncated = False
-        
-        if req.ia_validate:
-            if hf_token and raw_text.strip():
-                logger.info("Étape 2/4 : Correction IA demandée. Envoi à HuggingFace...")
-                try:
-                    corrected_text, is_truncated = await correct_text_with_hf(raw_text, hf_token)
-                    logger.info(f"Correction IA terminée. Longueur finale : {len(corrected_text)} caractères.")
-                except Exception as e:
-                    logger.error(f"Échec de la correction IA, utilisation du texte brut : {e}")
-            else:
-                logger.warning("Correction IA demandée mais impossible (Token HF manquant ou texte vide).")
+            
+            # Prise du verrou global pour l'extraction afin de ne pas surcharger le serveur
+            async with extraction_lock:
+                # Vérification si la tâche a été annulée par un admin pendant l'attente
+                db.refresh(req)
+                if req.status == "error":
+                    logger.info("Extraction annulée pendant l'attente (vide-file admin). Abandon.")
+                    return
+                    
+                # 1. Extraction du texte dans un thread séparé pour ne pas bloquer l'Event Loop (Tesseract très lourd)
+                logger.info(f"Étape 1/4 : Extraction du texte depuis le PDF '{req.file_path}' (Verrou Acquis)")
+                raw_text = await asyncio.to_thread(extract_text_from_pdf, req.file_path)
+                logger.info(f"Extraction terminée. Longueur brute : {len(raw_text)} caractères.")
                 
-        # 3. Sauvegarde du résultat
-        logger.info("Étape 3/4 : Sauvegarde du fichier texte résultat...")
-        user = db.query(User).filter(User.id == req.user_id).first()
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        
-        txt_filename = f"{timestamp}_{req.id_texte}.txt"
-        if is_truncated:
-            logger.warning("Le texte a été tronqué pour l'IA.")
-            txt_filename = f"{timestamp}_{req.id_texte}_IA_truncated.txt"
-            
-        txt_path = os.path.join(settings.USERS_DIR, user.directory_name, txt_filename)
-        
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(corrected_text)
-            
-        req.txt_file_path = txt_path
-        req.status = "success"
-        req.completed_at = datetime.utcnow()
-        db.commit()
-        logger.info(f"Fichier sauvegardé avec succès dans: {txt_path}")
-        
-        # 4. Envoi du Webhook
-        logger.info(f"Étape 4/4 : Envoi de la notification au webhook : {req.webhook_url}")
-        excerpt = corrected_text[:500]
-        if len(corrected_text) > 500:
-            excerpt += "..."
-            
-        # Create a single-use or long-lived download token specifically for this request
-        download_token = create_access_token(
-            data={"sub": str(req.id), "type": "download"}, 
-            expires_delta=timedelta(days=365)
-        )
-        download_url = f"{settings.EXTERNAL_URL}{settings.API_V1_STR}/extract/{req.id}/download?token={download_token}"
+                # 2. Correction IA (si demandée)
+                config = db.query(SystemConfig).first()
+                hf_token = config.hf_token if config else None
+                
+                corrected_text = raw_text
+                is_truncated = False
+                
+                if req.ia_validate:
+                    if hf_token and raw_text.strip():
+                        logger.info("Étape 2/4 : Correction IA demandée. Envoi à HuggingFace...")
+                        try:
+                            corrected_text, is_truncated = await correct_text_with_hf(raw_text, hf_token)
+                            logger.info(f"Correction IA terminée. Longueur finale : {len(corrected_text)} caractères.")
+                        except Exception as e:
+                            logger.error(f"Échec de la correction IA, utilisation du texte brut : {e}")
+                    else:
+                        logger.warning("Correction IA demandée mais impossible (Token HF manquant ou texte vide).")
+                        
+                # Vérification ultime avant sauvegarde des fichiers : si la tâche a été annulée pendant le traitement IA/OCR
+                db.refresh(req)
+                if req.status == "error":
+                    logger.info("Extraction annulée pendant le traitement (vide-file admin). Abandon de la sauvegarde.")
+                    return
+                    
+                # 3. Sauvegarde du résultat
+                logger.info("Étape 3/4 : Sauvegarde du fichier texte résultat...")
+                user = db.query(User).filter(User.id == req.user_id).first()
+                timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                
+                txt_filename = f"{timestamp}_{req.id_texte}.txt"
+                if is_truncated:
+                    logger.warning("Le texte a été tronqué pour l'IA.")
+                    txt_filename = f"{timestamp}_{req.id_texte}_IA_truncated.txt"
+                    
+                txt_path = os.path.join(settings.USERS_DIR, user.directory_name, txt_filename)
+                
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write(corrected_text)
+                    
+                req.txt_file_path = txt_path
+                req.status = "success"
+                req.completed_at = datetime.utcnow()
+                db.commit()
+                logger.info(f"Fichier sauvegardé avec succès dans: {txt_path}")
+                
+                # 4. Envoi du Webhook
+                logger.info(f"Étape 4/4 : Envoi de la notification au webhook : {req.webhook_url}")
+                excerpt = corrected_text[:500]
+                if len(corrected_text) > 500:
+                    excerpt += "..."
+                    
+                # Create a single-use or long-lived download token specifically for this request
+                download_token = create_access_token(
+                    data={"sub": str(req.id), "type": "download"}, 
+                    expires_delta=timedelta(days=365)
+                )
+                download_url = f"{settings.EXTERNAL_URL}{settings.API_V1_STR}/extract/{req.id}/download?token={download_token}"
 
-        await send_client_webhook(req.webhook_url, {
-            "message": "L'extraction est terminée.",
-            "etat": "succès",
-            "id_texte": req.id_texte,
-            "url": download_url,
-            "extrait": excerpt
-        })
+                await send_client_webhook(req.webhook_url, {
+                    "message": "L'extraction est terminée.",
+                    "etat": "succès",
+                    "id_texte": req.id_texte,
+                    "url": download_url,
+                    "extrait": excerpt
+                })
         
     except Exception as e:
         logger.error(f"Error processing request {request_id}: {e}")

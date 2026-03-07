@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Form, Query, Request
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func # Added for func.count()
 from app.db.database import get_db
 from app.db.models import User, ActivityLog, ExtractionRequest
 from app.routes.deps import get_current_admin_user, get_current_active_user
 from app.core.config import settings
 from app.services.extractor_job import process_extraction
+from app.services.webhook import send_client_webhook # Added for webhook in queue deletion
 from jose import jwt, JWTError
 import os
 import re
@@ -242,7 +244,7 @@ def download_text(
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token signature")
 
-    if not req or req.status != "success" or not req.txt_file_path:
+    if not req or req.status not in ["success", "success_cached"] or not req.txt_file_path:
         raise HTTPException(status_code=404, detail="File not found or not ready")
         
     return FileResponse(path=req.txt_file_path, filename=os.path.basename(req.txt_file_path), media_type="text/plain")
@@ -250,18 +252,96 @@ def download_text(
 @router.get("/user/requests")
 def get_user_requests(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     """
-    Récupère la liste des demandes de l'utilisateur.
+    Récupère la liste des demandes de l'utilisateur avec la position dans la file d'attente globale si applicable.
     """
     logger.debug(f"Récupération de l'historique pour {current_user.email}")
-    requests = db.query(ExtractionRequest).options(joinedload(ExtractionRequest.user)).filter(ExtractionRequest.user_id == current_user.id).order_by(ExtractionRequest.created_at.desc()).all()
+    
+    # 1. On récupère toutes les demandes globales actives (pour calculer la file d'attente de n'importe quel utilisateur)
+    # Les requêtes les plus anciennes (created_at asc) sont servies en premier à cause de l'attente FIFO du process_extraction
+    active_requests = db.query(ExtractionRequest.id).filter(
+        ExtractionRequest.status.in_(["pending", "processing"])
+    ).order_by(ExtractionRequest.created_at.asc()).all()
+    
+    # Liste ordonnée des IDs actifs
+    active_ids = [r[0] for r in active_requests]
+    
+    # 2. On récupère les requêtes de l'utilisateur
+    requests = db.query(ExtractionRequest).options(joinedload(ExtractionRequest.user)).filter(
+        ExtractionRequest.user_id == current_user.id
+    ).order_by(ExtractionRequest.created_at.desc()).all()
+    
     result = []
     for r in requests:
+        queue_pos = None
+        # Si la demande est active, on cherche sa position dans la grande file
+        if r.status in ["pending", "processing"] and r.id in active_ids:
+            queue_pos = active_ids.index(r.id)
+            
         result.append({
             "id": r.id,
             "id_texte": r.id_texte,
             "status": r.status,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "completed_at": r.completed_at.isoformat() if r.completed_at else None,
-            "error_message": r.error_message
+            "error_message": r.error_message,
+            "file_hash": r.file_hash,
+            "queue_position": queue_pos
         })
     return result
+
+@router.delete("/admin/cache")
+def clear_cache(db: Session = Depends(get_db), current_user: User = Depends(check_is_admin)):
+    """Vide le cache (toutes les extractions réussies) et supprime les fichiers .txt associés."""
+    logger.info(f"Admin {current_user.email} demande la purge du cache.")
+    
+    # Récupérer les requêtes avec succès
+    success_requests = db.query(ExtractionRequest).filter(
+        ExtractionRequest.status.in_(["success", "success_cached"])
+    ).all()
+    
+    count = 0
+    for req in success_requests:
+        # Suppression du fichier physique
+        if req.txt_file_path and os.path.exists(req.txt_file_path):
+            try:
+                os.remove(req.txt_file_path)
+            except Exception as e:
+                logger.error(f"Erreur lors de la suppression de {req.txt_file_path}: {e}")
+        # Suppression de l'entrée en base de données
+        db.delete(req)
+        count += 1
+        
+    db.commit()
+    logger.info(f"Cache purgé: {count} extractions supprimées.")
+    return {"message": "Cache vidé avec succès", "deleted_count": count}
+
+@router.delete("/admin/queue")
+async def clear_queue(db: Session = Depends(get_db), current_user: User = Depends(check_is_admin)):
+    """Vide la file d'attente et passe les traitements en erreur/maintenance."""
+    logger.info(f"Admin {current_user.email} demande la purge de la file d'attente.")
+    
+    active_requests = db.query(ExtractionRequest).filter(
+        ExtractionRequest.status.in_(["pending", "processing"])
+    ).all()
+    
+    count = 0
+    for req in active_requests:
+        req.status = "error"
+        req.error_message = "Traitement interrompu par le serveur pour cause de maintenance"
+        req.completed_at = datetime.utcnow()
+        count += 1
+        
+        # Envoi de la notification webhook d'erreur pour prévenir le client
+        if req.webhook_url:
+            asyncio.create_task(
+                send_client_webhook(req.webhook_url, {
+                    "message": "L'extraction a échoué.",
+                    "etat": "échec",
+                    "id_texte": req.id_texte,
+                    "erreur": req.error_message
+                })
+            )
+            
+    db.commit()
+    logger.info(f"File d'attente purgée: {count} requêtes interrompues.")
+    return {"message": "File d'attente vidée", "interrupted_count": count}

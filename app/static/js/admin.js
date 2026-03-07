@@ -11,6 +11,50 @@ function logout() {
     window.location.href = `${APP_PREFIX}/login`;
 }
 
+async function clearCache() {
+    if (!confirm("Voulez-vous vraiment vider l'ensemble du cache ? Cela supprimera toutes les extractions déjà réalisées et forcera un nouveau calcul pour les futurs PDF identiques.")) {
+        return;
+    }
+    try {
+        const response = await fetch(`${APP_PREFIX}/api/v1/admin/cache`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            alert(`Cache vidé avec succès (${data.deleted_count} entrées supprimées).`);
+        } else {
+            const data = await response.json();
+            alert('Erreur: ' + (data.detail || 'Impossible de vider le cache'));
+        }
+    } catch (err) {
+        console.error("Échec lors du vidage du cache", err);
+        alert("Erreur de connexion lors du nettoyage du cache.");
+    }
+}
+
+async function clearQueue() {
+    if (!confirm("Voulez-vous annuler toutes les extractions en attente ou en cours ? Les webhooks vont recevoir une notification de maintenance technique.")) {
+        return;
+    }
+    try {
+        const response = await fetch(`${APP_PREFIX}/api/v1/admin/queue`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            alert(`File d'attente vidée (${data.interrupted_count} extractions annulées).`);
+        } else {
+            const data = await response.json();
+            alert('Erreur: ' + (data.detail || 'Impossible de vider la file'));
+        }
+    } catch (err) {
+        console.error("Échec lors du vidage de la file d'attente", err);
+        alert("Erreur de connexion lors de l'annulation de la file d'attente.");
+    }
+}
+
 async function loadUsers() {
     try {
         const response = await fetch(`${APP_PREFIX}/api/v1/admin/users`, {
