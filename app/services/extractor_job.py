@@ -13,8 +13,14 @@ from datetime import timedelta
 import hashlib
 import asyncio
 
-# Verrou global pour n'autoriser qu'une seule extraction PDF (OCR/IA) à la fois
-extraction_lock = asyncio.Lock()
+# Sémaphore global initialisé paresseusement
+_extraction_lock = None
+
+def get_extraction_lock():
+    global _extraction_lock
+    if _extraction_lock is None:
+        _extraction_lock = asyncio.Semaphore(settings.MAX_CONCURRENT_EXTRACTIONS)
+    return _extraction_lock
 
 async def process_extraction(request_id: int):
     # This runs in background
@@ -79,7 +85,8 @@ async def process_extraction(request_id: int):
             db.commit()
             
             # Prise du verrou global pour l'extraction afin de ne pas surcharger le serveur
-            async with extraction_lock:
+            lock = get_extraction_lock()
+            async with lock:
                 # Vérification si la tâche a été annulée par un admin pendant l'attente
                 db.refresh(req)
                 if req.status == "error":

@@ -54,6 +54,7 @@ deploy:
   port: 8885                             # Port d'écoute de l'application
   target_directory: "/opt/rpgpdf2txt/"   # Répertoire d'installation
   app_prefix: "/rpgpdf2txt"              # Préfixe URL (reverse proxy)
+  max_concurrent_extractions: 1          # Limite le nombre de traitements Tesseract/IA simultanés
 ```
 
 > [!IMPORTANT]
@@ -114,6 +115,7 @@ sudo nano /opt/rpgpdf2txt/.env
 SECRET_KEY=VOTRE_CLE_TRES_LONGUE_ET_SECRETE
 DATABASE_URL=sqlite:///./data/db/rpgpdf2text.db
 APP_PREFIX=/rpgpdf2txt
+MAX_CONCURRENT_EXTRACTIONS=1
 ```
 
 ### 4.2 Permissions

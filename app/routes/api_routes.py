@@ -3,11 +3,10 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func # Added for func.count()
 from app.db.database import get_db
 from app.db.models import User, ActivityLog, ExtractionRequest
-from app.routes.deps import get_current_admin_user, get_current_active_user
+from app.routes.deps import get_current_admin_user, get_current_active_user, get_token
 from app.core.config import settings
 from app.services.extractor_job import process_extraction
 from app.services.webhook import send_client_webhook # Added for webhook in queue deletion
-from jose import jwt, JWTError
 import os
 import re
 import shutil
@@ -206,41 +205,35 @@ async def extract_document(
     return {"msg": "Extraction started", "request_id": req.id}
 
 from fastapi.responses import FileResponse
+from app.core.security import decode_access_token
 
 @router.get("/extract/{request_id}/download")
 def download_text(
     request_id: int, 
-    request: Request,
-    token: str = Query(None),
+    token: str = Depends(get_token),
     db: Session = Depends(get_db)
 ):
     actual_token = token
-    if not actual_token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            actual_token = auth_header.split(" ")[1]
             
     if not actual_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
         
-    try:
-        payload = jwt.decode(actual_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        
-        if payload.get("type") == "download":
-            if str(payload.get("sub")) != str(request_id):
-                raise HTTPException(status_code=403, detail="Invalid token for this download")
-            req = db.query(ExtractionRequest).filter(ExtractionRequest.id == request_id).first()
-        else:
-            email = payload.get("sub")
-            if not email:
-                raise HTTPException(status_code=401, detail="Invalid token")
-            user = db.query(User).filter(User.email == email, User.is_validated == True).first()
-            if not user:
-                raise HTTPException(status_code=401, detail="Invalid user")
-            req = db.query(ExtractionRequest).filter(ExtractionRequest.id == request_id, ExtractionRequest.user_id == user.id).first()
-            
-    except JWTError:
+    payload = decode_access_token(actual_token)
+    if not payload:
         raise HTTPException(status_code=401, detail="Invalid token signature")
+        
+    if payload.get("type") == "download":
+        if str(payload.get("sub")) != str(request_id):
+            raise HTTPException(status_code=403, detail="Invalid token for this download")
+        req = db.query(ExtractionRequest).filter(ExtractionRequest.id == request_id).first()
+    else:
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = db.query(User).filter(User.email == email, User.is_validated == True).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid user")
+        req = db.query(ExtractionRequest).filter(ExtractionRequest.id == request_id, ExtractionRequest.user_id == user.id).first()
 
     if not req or req.status not in ["success", "success_cached"] or not req.txt_file_path:
         raise HTTPException(status_code=404, detail="File not found or not ready")
@@ -310,6 +303,12 @@ def clear_cache(db: Session = Depends(get_db), current_user: User = Depends(get_
         count += 1
         
     db.commit()
+    
+    # Log the action
+    log = ActivityLog(user_id=current_user.id, action=f"L'admin a vidé le cache ({count} extractions supprimées)")
+    db.add(log)
+    db.commit()
+    
     logger.info(f"Cache purgé: {count} extractions supprimées.")
     return {"message": "Cache vidé avec succès", "deleted_count": count}
 
@@ -341,5 +340,49 @@ async def clear_queue(db: Session = Depends(get_db), current_user: User = Depend
             )
             
     db.commit()
+    
+    # Log the action
+    log = ActivityLog(user_id=current_user.id, action=f"L'admin a purgé la file d'attente ({count} requêtes interrompues)")
+    db.add(log)
+    db.commit()
+    
     logger.info(f"File d'attente purgée: {count} requêtes interrompues.")
     return {"message": "File d'attente vidée", "interrupted_count": count}
+
+@router.delete("/extract/{request_id}")
+async def delete_extraction(request_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
+    """Supprime une extraction spécifique, son fichier texte et son entrée en base de données."""
+    logger.info(f"Demande de suppression de l'extraction {request_id} par {current_user.email}")
+    
+    # Récupérer la requête
+    req = db.query(ExtractionRequest).filter(ExtractionRequest.id == request_id).first()
+    
+    if not req:
+        raise HTTPException(status_code=404, detail="Demande d'extraction non trouvée")
+        
+    # Vérifier les permissions (propriétaire ou admin/creator)
+    if req.user_id != current_user.id and current_user.role not in ["admin", "creator"]:
+        logger.warning(f"Tentative de suppression non autorisée par {current_user.email} sur {request_id}")
+        raise HTTPException(status_code=403, detail="Vous n'avez pas l'autorisation de supprimer cette extraction")
+        
+    id_texte = req.id_texte
+    
+    # Suppression du fichier physique
+    if req.txt_file_path and os.path.exists(req.txt_file_path):
+        try:
+            os.remove(req.txt_file_path)
+            logger.info(f"Fichier supprimé: {req.txt_file_path}")
+        except Exception as e:
+            logger.error(f"Erreur lors de la suppression de {req.txt_file_path}: {e}")
+            
+    # Suppression de l'entrée en base de données
+    db.delete(req)
+    
+    # Log de l'activité
+    log = ActivityLog(user_id=current_user.id, action=f"Suppression de l'extraction '{id_texte}' (ID: {request_id})")
+    db.add(log)
+    
+    db.commit()
+    
+    logger.info(f"Extraction {request_id} ('{id_texte}') supprimée avec succès.")
+    return {"message": f"Extraction '{id_texte}' supprimée avec succès"}

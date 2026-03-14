@@ -13,7 +13,7 @@ Ce document détaille l'architecture sous-jacente de RPGPDF2Text, ainsi que les 
 | Extraction PDF (natif) | PyMuPDF | `app/services/pdf_extractor.py` |
 | Extraction PDF (OCR) | pdf2image + pytesseract | `app/services/pdf_extractor.py` |
 | Correction IA | API HuggingFace (Meta-Llama-3-8B-Instruct) | `app/services/hf_corrector.py` |
-| Authentification | JWT (python-jose) + bcrypt | `app/core/security.py`, `app/routes/deps.py` |
+| Authentification | JWT + Injection de Dépendances (Cookie/Header/Query) | `app/core/security.py`, `app/routes/deps.py` |
 | Logging | Loguru → stdout + `data/logs/app.log` | `app/main.py` |
 | Webhooks | httpx (async) | `app/services/webhook.py` |
 | Déploiement | paramiko (SSH/SFTP) | `deploy.py` |
@@ -69,16 +69,16 @@ graph TB
 | Fichier | Rôle | Routes principales |
 |---|---|---|
 | `view_routes.py` | Pages HTML (templates Jinja2) | `/`, `/login`, `/dashboard`, `/admin`, `/register` |
-| `auth_routes.py` | API d'authentification JWT | `/api/v1/auth/login` |
+| `auth_routes.py` | API d'authentification JWT (Login/Logout) | `/api/v1/auth/login` |
 | `api_routes.py` | API fonctionnelle | `/api/v1/extract`, `/api/v1/user/requests`, `/api/v1/admin/users` |
-| `deps.py` | Dépendances d'injection (auth) | — |
+| `deps.py` | **Moteur d'Auth Unifié** : Extraction centralisée du JWT | — |
 
 ### `/core/` — Configuration et sécurité
 
 | Fichier | Rôle |
 |---|---|
 | `config.py` | Settings Pydantic, chargement de `deployment.yaml` et `.env` |
-| `security.py` | Hashage bcrypt, création/vérification de tokens JWT |
+| `security.py` | Hashage bcrypt, création et **décodage centralisé** des tokens JWT |
 
 ### `/services/` — Logique métier
 
@@ -95,6 +95,21 @@ graph TB
 |---|---|
 | `database.py` | Initialisation de SQLAlchemy, session factory |
 | `models.py` | Modèles : `User`, `SystemConfig`, `ExtractionRequest`, `ActivityLog` |
+
+## Sécurité et Authentification
+
+L'application utilise un système d'authentification basé sur JWT, unifié via l'injection de dépendances de FastAPI.
+
+### Mécanisme Unifié (`deps.py`)
+
+Une dépendance unique `get_token` est responsable de l'extraction du jeton depuis trois sources, par ordre de priorité :
+1.  **Header `Authorization`** (Bearer token) pour les appels API programmatiques.
+2.  **Query Parameter `?token=`** principalement utilisé pour les liens de téléchargement public.
+3.  **Cookie `access_token`** pour la navigation fluide dans l'interface web (Vues HTML).
+
+Deux dépendances de haut niveau en découlent :
+-   `get_current_user` : Strict. Lève une erreur 401 si aucun utilisateur valide n'est trouvé.
+-   `get_current_user_optional` : Souple. Utilisé par les vues HTML pour rediriger vers `/login` côté serveur si le jeton est manquant ou invalide.
 
 ## Gestion du Préfixe d'URL
 
@@ -139,4 +154,5 @@ Voir le guide complet : **[doc/DEPLOIEMENT.md](DEPLOIEMENT.md)**
 SECRET_KEY=une_super_cle_secrete_longue
 DATABASE_URL=sqlite:///./data/db/rpgpdf2text.db
 APP_PREFIX=/rpgpdf2txt
+MAX_CONCURRENT_EXTRACTIONS=1
 ```

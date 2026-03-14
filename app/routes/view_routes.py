@@ -9,16 +9,9 @@ from app.services.webhook import send_discord_notification
 from app.core.config import settings
 import os
 
-def _is_admin(request: Request) -> bool:
-    token = request.cookies.get("access_token")
-    if not token:
-        return False
-    from jose import jwt, JWTError
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload.get("role") in ["admin", "creator"]
-    except JWTError:
-        return False
+from loguru import logger
+
+from app.routes.deps import get_current_user_optional
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -42,8 +35,8 @@ async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/admin", response_class=HTMLResponse)
-async def admin_page(request: Request):
-    if not _is_admin(request):
+async def admin_page(request: Request, current_user: User = Depends(get_current_user_optional)):
+    if not current_user or current_user.role not in ["admin", "creator"]:
         return RedirectResponse(url=f"{_prefix}/login", status_code=302)
     return templates.TemplateResponse("admin.html", {"request": request, "app_prefix": _prefix})
 
@@ -52,20 +45,26 @@ async def dashboard_page(request: Request):
     return RedirectResponse(url=f"{_prefix}/extraction", status_code=302)
 
 @router.get("/extraction", response_class=HTMLResponse)
-async def extraction_page(request: Request):
+async def extraction_page(request: Request, current_user: User = Depends(get_current_user_optional)):
+    if not current_user:
+        return RedirectResponse(url=f"{_prefix}/login", status_code=302)
     return templates.TemplateResponse("extraction.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/history", response_class=HTMLResponse)
-async def history_page(request: Request):
+async def history_page(request: Request, current_user: User = Depends(get_current_user_optional)):
+    if not current_user:
+        return RedirectResponse(url=f"{_prefix}/login", status_code=302)
     return templates.TemplateResponse("history.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/preferences", response_class=HTMLResponse)
-async def preferences_page(request: Request):
+async def preferences_page(request: Request, current_user: User = Depends(get_current_user_optional)):
+    if not current_user:
+        return RedirectResponse(url=f"{_prefix}/login", status_code=302)
     return templates.TemplateResponse("preferences.html", {"request": request, "app_prefix": _prefix})
 
 @router.get("/cache", response_class=HTMLResponse)
-async def cache_page(request: Request, db: Session = Depends(get_db)):
-    if not _is_admin(request):
+async def cache_page(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user_optional)):
+    if not current_user or current_user.role not in ["admin", "creator"]:
         return RedirectResponse(url=f"{_prefix}/login", status_code=302)
         
     from app.db.models import ExtractionRequest

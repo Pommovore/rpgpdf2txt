@@ -1,5 +1,6 @@
 from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 class SystemConfig(Base):
@@ -39,7 +40,6 @@ class ExtractionRequest(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relationship to user
-    from sqlalchemy.orm import relationship
     user = relationship("User", backref="extraction_requests")
 
 class ActivityLog(Base):

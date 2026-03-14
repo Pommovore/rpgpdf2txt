@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = Field(default="sqlite:///./data/db/rpgpdf2text.db")
     
+    # Extraction
+    MAX_CONCURRENT_EXTRACTIONS: int = Field(default=_deploy_config.get("max_concurrent_extractions", 1))
+
     # Security
     SECRET_KEY: str = Field(default="CHANGE_ME_IN_PRODUCTION_A_VERY_LONG_SECRET_KEY")
     ALGORITHM: str = "HS256"

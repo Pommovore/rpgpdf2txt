@@ -42,7 +42,7 @@ Ce document définit les standards de développement, l'architecture et les work
 ### Démarrage
 *   Activer l'environnement virtuel : `source .venv/bin/activate` (ou via `uv`).
 
-### ne pas utiliser git !
+### L'agent Antigravity ne doit pas utiliser git !
 *   ne pas utiliser git push !
 *   ne pas utiliser git commit !
 *   ne pas utiliser git add !

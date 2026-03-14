@@ -25,4 +25,9 @@ dependencies = [
     "sqlalchemy",
     "uvicorn[standard]",
     "aiofiles>=25.1.0",
+    "pytest>=9.0.2",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

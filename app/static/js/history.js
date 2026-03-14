@@ -59,11 +59,21 @@ async function loadRequests() {
             switch (req.status) {
                 case 'success':
                     statusBadge = '<span class="badge bg-success">Terminé</span>';
-                    actionBtn = `<a href="${APP_PREFIX}/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-success"><i class="bi bi-download"></i> .txt</a>`;
+                    actionBtn = `
+                        <div class="btn-group">
+                            <a href="${APP_PREFIX}/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-success" title="Télécharger"><i class="bi bi-download"></i> .txt</a>
+                            <button onclick="deleteRequest(${req.id}, '${req.id_texte}')" class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+                        </div>
+                    `;
                     break;
                 case 'success_cached':
                     statusBadge = '<span class="badge bg-secondary">Caché</span>';
-                    actionBtn = `<a href="${APP_PREFIX}/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i> .txt</a>`;
+                    actionBtn = `
+                        <div class="btn-group">
+                            <a href="${APP_PREFIX}/api/v1/extract/${req.id}/download?token=${token}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Télécharger"><i class="bi bi-download"></i> .txt</a>
+                            <button onclick="deleteRequest(${req.id}, '${req.id_texte}')" class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+                        </div>
+                    `;
                     if (req.file_hash) {
                         idColumnHtml = `
                             <span class="badge border border-secondary text-secondary" style="cursor: help;"
@@ -77,7 +87,7 @@ async function loadRequests() {
                     break;
                 case 'pending':
                     statusBadge = '<span class="badge bg-warning text-dark">En attente</span>';
-                    actionBtn = `<span class="text-muted small">En attente</span>`;
+                    actionBtn = `<button onclick="deleteRequest(${req.id}, '${req.id_texte}')" class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>`;
                     if (req.queue_position !== undefined && req.queue_position !== null) {
                         idColumnHtml = `<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split"></i> Attente : ${req.queue_position + 1}</span>`;
                     }
@@ -91,7 +101,7 @@ async function loadRequests() {
                     break;
                 case 'error':
                     statusBadge = '<span class="badge bg-danger">Erreur</span>';
-                    actionBtn = `<span class="text-danger small" title="${req.error_message || 'Erreur inconnue'}">Échec</span>`;
+                    actionBtn = `<button onclick="deleteRequest(${req.id}, '${req.id_texte}')" class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>`;
                     break;
             }
 
@@ -121,6 +131,31 @@ async function loadRequests() {
         }
     } catch (err) {
         console.error('Échec du chargement des demandes', err);
+    }
+}
+
+async function deleteRequest(requestId, idTexte) {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer l'extraction "${idTexte}" ?\nCette action supprimera également le fichier généré.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${APP_PREFIX}/api/v1/extract/${requestId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (response.ok) {
+            loadRequests();
+        } else {
+            const error = await response.json();
+            alert(`Erreur: ${error.detail || 'Impossible de supprimer l\'extraction'}`);
+        }
+    } catch (err) {
+        console.error('Erreur lors de la suppression', err);
+        alert('Erreur réseau lors de la suppression');
     }
 }
 
